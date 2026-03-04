@@ -8,7 +8,8 @@ from datetime import datetime
 from app.models.user import get_user_db
 
 
-def create_conversation(user_id: str, title: str = "New Chat", model_id: str = None) -> dict:
+def create_conversation(user_id: str, title: str = "New Chat", 
+                        model_id: str = None, reasoning_effort: str = 'auto') -> dict:
     """Create a new conversation for a user."""
     conn = get_user_db(user_id)
     cursor = conn.cursor()
@@ -17,9 +18,9 @@ def create_conversation(user_id: str, title: str = "New Chat", model_id: str = N
     now = datetime.now().isoformat()
     
     cursor.execute('''
-        INSERT INTO conversations (id, title, model_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (conversation_id, title, model_id, now, now))
+        INSERT INTO conversations (id, title, model_id, reasoning_effort, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (conversation_id, title, model_id, reasoning_effort, now, now))
     
     conn.commit()
     conn.close()
@@ -39,7 +40,7 @@ def get_conversations(user_id: str) -> list:
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT id, title, model_id, created_at, updated_at 
+        SELECT id, title, model_id, reasoning_effort, created_at, updated_at 
         FROM conversations 
         ORDER BY updated_at DESC
     ''')
@@ -51,6 +52,7 @@ def get_conversations(user_id: str) -> list:
         'id': row['id'],
         'title': row['title'],
         'model_id': row['model_id'],
+        'reasoning_effort': row['reasoning_effort'] or 'auto',
         'created_at': row['created_at'],
         'updated_at': row['updated_at']
     } for row in rows]
@@ -62,7 +64,7 @@ def get_conversation(user_id: str, conversation_id: str) -> dict:
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT id, title, model_id, created_at, updated_at 
+        SELECT id, title, model_id, reasoning_effort, created_at, updated_at 
         FROM conversations 
         WHERE id = ?
     ''', (conversation_id,))
@@ -75,13 +77,15 @@ def get_conversation(user_id: str, conversation_id: str) -> dict:
             'id': row['id'],
             'title': row['title'],
             'model_id': row['model_id'],
+        'reasoning_effort': row['reasoning_effort'] or 'auto',
             'created_at': row['created_at'],
             'updated_at': row['updated_at']
         }
     return None
 
 
-def update_conversation(user_id: str, conversation_id: str, title: str = None, model_id: str = None) -> dict:
+def update_conversation(user_id: str, conversation_id: str, title: str = None, 
+                        model_id: str = None, reasoning_effort: str = None) -> dict:
     """Update a conversation."""
     conn = get_user_db(user_id)
     cursor = conn.cursor()
@@ -96,6 +100,10 @@ def update_conversation(user_id: str, conversation_id: str, title: str = None, m
     if model_id is not None:
         updates.append("model_id = ?")
         params.append(model_id)
+    
+    if reasoning_effort is not None:
+        updates.append("reasoning_effort = ?")
+        params.append(reasoning_effort)
     
     updates.append("updated_at = ?")
     params.append(datetime.now().isoformat())

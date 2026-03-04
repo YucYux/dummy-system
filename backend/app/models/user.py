@@ -210,6 +210,7 @@ def init_user_db(user_id: str):
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
             model_id TEXT,
+            reasoning_effort TEXT DEFAULT 'auto',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )

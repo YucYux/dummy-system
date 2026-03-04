@@ -1,8 +1,8 @@
 <template>
   <div class="admin-layout">
     <header class="admin-header">
-      <h1>Admin Dashboard</h1>
-      <router-link to="/" class="btn btn-secondary">Back to Chat</router-link>
+      <h1>管理面板</h1>
+      <router-link to="/" class="btn btn-secondary">返回对话</router-link>
     </header>
     
     <main class="admin-main">
@@ -10,9 +10,9 @@
         <!-- Models Management -->
         <section class="admin-section">
           <div class="section-header">
-            <h2>Model Configuration</h2>
+            <h2>模型配置</h2>
             <button @click="showModelModal = true" class="btn btn-primary btn-sm">
-              + Add Model
+              + 添加模型
             </button>
           </div>
           
@@ -21,36 +21,42 @@
               <table class="admin-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Provider</th>
-                    <th>Model ID</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th>名称</th>
+                    <th>类型</th>
+                    <th>提供商</th>
+                    <th>模型ID</th>
+                    <th>状态</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="model in models" :key="model.id">
                     <td>
                       {{ model.name }}
-                      <span v-if="model.is_default" class="default-badge">Default</span>
+                      <span v-if="model.is_default" class="default-badge">默认</span>
+                    </td>
+                    <td>
+                      <span :class="['reasoning-badge', model.is_reasoning ? 'reasoning' : 'standard']">
+                        {{ model.is_reasoning ? '推理模型' : '普通模型' }}
+                      </span>
                     </td>
                     <td>{{ model.provider }}</td>
                     <td>{{ model.model_id }}</td>
                     <td>
                       <span :class="['status-badge', model.enabled ? 'enabled' : 'disabled']">
-                        {{ model.enabled ? 'Enabled' : 'Disabled' }}
+                        {{ model.enabled ? '已启用' : '已禁用' }}
                       </span>
                     </td>
                     <td>
-                      <button @click="editModel(model)" class="btn btn-ghost btn-sm">Edit</button>
-                      <button @click="deleteModel(model.id)" class="btn btn-ghost btn-sm text-danger">Delete</button>
+                      <button @click="editModel(model)" class="btn btn-ghost btn-sm">编辑</button>
+                      <button @click="deleteModel(model.id)" class="btn btn-ghost btn-sm text-danger">删除</button>
                     </td>
                   </tr>
                 </tbody>
               </table>
               
               <div v-if="models.length === 0" class="empty-state">
-                <p>No models configured</p>
+                <p>暂无模型配置</p>
               </div>
             </div>
           </div>
@@ -59,9 +65,9 @@
         <!-- Users Management -->
         <section class="admin-section">
           <div class="section-header">
-            <h2>User Management</h2>
+            <h2>用户管理</h2>
             <button @click="showUserModal = true" class="btn btn-primary btn-sm">
-              + Add User
+              + 添加用户
             </button>
           </div>
           
@@ -70,11 +76,11 @@
               <table class="admin-table">
                 <thead>
                   <tr>
-                    <th>Username</th>
-                    <th>Role</th>
-                    <th>Created</th>
-                    <th>Last Login</th>
-                    <th>Actions</th>
+                    <th>用户名</th>
+                    <th>角色</th>
+                    <th>创建时间</th>
+                    <th>最后登录</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -82,18 +88,18 @@
                     <td>{{ user.username }}</td>
                     <td>
                       <span :class="['role-badge', user.is_admin ? 'admin' : 'user']">
-                        {{ user.is_admin ? 'Admin' : 'User' }}
+                        {{ user.is_admin ? '管理员' : '用户' }}
                       </span>
                     </td>
                     <td>{{ formatDate(user.created_at) }}</td>
-                    <td>{{ user.last_login ? formatDate(user.last_login) : 'Never' }}</td>
+                    <td>{{ user.last_login ? formatDate(user.last_login) : '从未登录' }}</td>
                     <td>
                       <button 
                         @click="deleteUser(user.id)" 
                         class="btn btn-ghost btn-sm text-danger"
                         :disabled="user.id === authStore.user?.id"
                       >
-                        Delete
+                        删除
                       </button>
                     </td>
                   </tr>
@@ -106,31 +112,30 @@
     </main>
     
     <!-- Model Modal -->
-    <div v-if="showModelModal" class="modal-overlay" @click.self="closeModelModal">
+    <div v-if="showModelModal" class="modal-overlay">
       <div class="modal">
         <div class="modal-header">
-          <h3>{{ editingModel ? 'Edit Model' : 'Add Model' }}</h3>
+          <h3>{{ editingModel ? '编辑模型' : '添加模型' }}</h3>
           <button @click="closeModelModal" class="close-btn">×</button>
         </div>
         
         <form @submit.prevent="saveModel" class="modal-body">
           <div class="input-group">
-            <label>Display Name</label>
+            <label>显示名称</label>
             <input v-model="modelForm.name" type="text" class="input" required />
           </div>
           
           <div class="input-group">
-            <label>Provider</label>
+            <label>提供商</label>
             <select v-model="modelForm.provider" class="input">
               <option value="openai">OpenAI</option>
               <option value="anthropic">Anthropic</option>
-              <option value="custom">Custom</option>
             </select>
           </div>
           
           <div class="input-group">
-            <label>Model ID</label>
-            <input v-model="modelForm.model_id" type="text" class="input" placeholder="e.g., gpt-4o" required />
+            <label>模型 ID</label>
+            <input v-model="modelForm.model_id" type="text" class="input" placeholder="例如: gpt-4o" required />
           </div>
           
           <div class="input-group">
@@ -146,17 +151,21 @@
           <div class="checkbox-group">
             <label>
               <input type="checkbox" v-model="modelForm.enabled" />
-              Enabled
+              启用
             </label>
             <label>
               <input type="checkbox" v-model="modelForm.is_default" />
-              Set as Default
+              设为默认
+            </label>
+            <label>
+              <input type="checkbox" v-model="modelForm.is_reasoning" />
+              推理模型
             </label>
           </div>
           
           <div class="modal-actions">
-            <button type="button" @click="closeModelModal" class="btn btn-secondary">Cancel</button>
-            <button type="submit" class="btn btn-primary">{{ editingModel ? 'Update' : 'Create' }}</button>
+            <button type="button" @click="closeModelModal" class="btn btn-secondary">取消</button>
+            <button type="submit" class="btn btn-primary">{{ editingModel ? '更新' : '创建' }}</button>
           </div>
         </form>
       </div>
@@ -166,31 +175,31 @@
     <div v-if="showUserModal" class="modal-overlay" @click.self="closeUserModal">
       <div class="modal">
         <div class="modal-header">
-          <h3>Add User</h3>
+          <h3>添加用户</h3>
           <button @click="closeUserModal" class="close-btn">×</button>
         </div>
         
         <form @submit.prevent="createUser" class="modal-body">
           <div class="input-group">
-            <label>Username</label>
+            <label>用户名</label>
             <input v-model="userForm.username" type="text" class="input" minlength="3" required />
           </div>
           
           <div class="input-group">
-            <label>Password</label>
+            <label>密码</label>
             <input v-model="userForm.password" type="password" class="input" minlength="6" required />
           </div>
           
           <div class="checkbox-group">
             <label>
               <input type="checkbox" v-model="userForm.is_admin" />
-              Admin privileges
+              管理员权限
             </label>
           </div>
           
           <div class="modal-actions">
-            <button type="button" @click="closeUserModal" class="btn btn-secondary">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create</button>
+            <button type="button" @click="closeUserModal" class="btn btn-secondary">取消</button>
+            <button type="submit" class="btn btn-primary">创建</button>
           </div>
         </form>
       </div>
@@ -218,7 +227,8 @@ const modelForm = ref({
   api_url: 'https://api.openai.com/v1',
   api_key: '',
   enabled: true,
-  is_default: false
+  is_default: false,
+  is_reasoning: false
 })
 
 const userForm = ref({
@@ -253,18 +263,18 @@ async function saveModel() {
     await loadModels()
     closeModelModal()
   } catch (err) {
-    alert(err.error || 'Failed to save model')
+    alert(err.error || '保存模型失败')
   }
 }
 
 async function deleteModel(modelId) {
-  if (!confirm('Are you sure you want to delete this model?')) return
+  if (!confirm('确定要删除这个模型吗？')) return
   
   try {
     await api.deleteModel(modelId)
     await loadModels()
   } catch (err) {
-    alert(err.error || 'Failed to delete model')
+    alert(err.error || '删除模型失败')
   }
 }
 
@@ -278,7 +288,8 @@ function closeModelModal() {
     api_url: 'https://api.openai.com/v1',
     api_key: '',
     enabled: true,
-    is_default: false
+    is_default: false,
+    is_reasoning: false
   }
 }
 
@@ -288,18 +299,18 @@ async function createUser() {
     await loadUsers()
     closeUserModal()
   } catch (err) {
-    alert(err.error || 'Failed to create user')
+    alert(err.error || '创建用户失败')
   }
 }
 
 async function deleteUser(userId) {
-  if (!confirm('Are you sure you want to delete this user?')) return
+  if (!confirm('确定要删除这个用户吗？')) return
   
   try {
     await api.deleteUser(userId)
     await loadUsers()
   } catch (err) {
-    alert(err.error || 'Failed to delete user')
+    alert(err.error || '删除用户失败')
   }
 }
 
@@ -406,6 +417,24 @@ onMounted(() => {
   &.disabled {
     background-color: #f3f4f6;
     color: #6b7280;
+  }
+}
+
+.reasoning-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+
+  &.reasoning {
+    background-color: #ede9fe;
+    color: #7c3aed;
+  }
+
+  &.standard {
+    background-color: #f3f4f6;
+    color: #475569;
   }
 }
 

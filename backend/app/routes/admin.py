@@ -24,19 +24,19 @@ def add_user():
     data = request.get_json()
     
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({'error': '未提供数据'}), 400
     
     username = data.get('username')
     password = data.get('password')
     is_admin = data.get('is_admin', False)
     
     if not username or not password:
-        return jsonify({'error': 'Username and password are required'}), 400
+        return jsonify({'error': '用户名和密码不能为空'}), 400
     
     user = create_user(username, password, is_admin=is_admin)
     
     if not user:
-        return jsonify({'error': 'Username already exists'}), 409
+        return jsonify({'error': '用户名已存在'}), 409
     
     return jsonify({'user': user}), 201
 
@@ -46,11 +46,11 @@ def add_user():
 def remove_user(user_id):
     """Delete a user."""
     if user_id == g.user_id:
-        return jsonify({'error': 'Cannot delete yourself'}), 400
+        return jsonify({'error': '不能删除自己'}), 400
     
     success = delete_user(user_id)
     
     if not success:
-        return jsonify({'error': 'User not found'}), 404
+        return jsonify({'error': '用户不存在'}), 404
     
-    return jsonify({'message': 'User deleted successfully'})
+    return jsonify({'message': '用户删除成功'})

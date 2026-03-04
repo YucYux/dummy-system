@@ -4,30 +4,30 @@
       <div class="auth-card">
         <div class="auth-header">
           <h1>Dummy System</h1>
-          <p>Sign in to your account</p>
+          <p>登录到你的账户</p>
         </div>
         
         <form @submit.prevent="handleLogin" class="auth-form">
           <div class="input-group">
-            <label for="username">Username</label>
+            <label for="username">用户名</label>
             <input 
               id="username"
               v-model="username"
               type="text"
               class="input"
-              placeholder="Enter your username"
+              placeholder="输入用户名"
               required
             />
           </div>
           
           <div class="input-group">
-            <label for="password">Password</label>
+            <label for="password">密码</label>
             <input 
               id="password"
               v-model="password"
               type="password"
               class="input"
-              placeholder="Enter your password"
+              placeholder="输入密码"
               required
             />
           </div>
@@ -41,14 +41,14 @@
             class="btn btn-primary btn-lg"
             :disabled="loading"
           >
-            {{ loading ? 'Signing in...' : 'Sign In' }}
+            {{ loading ? '登录中...' : '登录' }}
           </button>
         </form>
         
         <div class="auth-footer">
           <p>
-            Don't have an account?
-            <router-link to="/register">Create one</router-link>
+            还没有账号？
+            <router-link to="/register">立即注册</router-link>
           </p>
         </div>
       </div>
@@ -77,7 +77,7 @@ async function handleLogin() {
     await authStore.login(username.value, password.value)
     router.push('/')
   } catch (err) {
-    error.value = err.error || 'Login failed. Please try again.'
+    error.value = err.error || '登录失败，请重试'
   } finally {
     loading.value = false
   }

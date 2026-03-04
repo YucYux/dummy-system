@@ -49,17 +49,17 @@ def token_required(f):
             token = auth_header.split(' ')[1]
         
         if not token:
-            return jsonify({'error': 'Token is missing'}), 401
+            return jsonify({'error': '缺少令牌'}), 401
         
         # Decode token
         payload = decode_token(token)
         if not payload:
-            return jsonify({'error': 'Token is invalid or expired'}), 401
+            return jsonify({'error': '令牌无效或已过期'}), 401
         
         # Get user
         user = get_user_by_id(payload['user_id'])
         if not user:
-            return jsonify({'error': 'User not found'}), 401
+            return jsonify({'error': '用户不存在'}), 401
         
         # Store user in g for route access
         g.user = user
@@ -83,21 +83,21 @@ def admin_required(f):
             token = auth_header.split(' ')[1]
         
         if not token:
-            return jsonify({'error': 'Token is missing'}), 401
+            return jsonify({'error': '缺少令牌'}), 401
         
         # Decode token
         payload = decode_token(token)
         if not payload:
-            return jsonify({'error': 'Token is invalid or expired'}), 401
+            return jsonify({'error': '令牌无效或已过期'}), 401
         
         # Check admin
         if not payload.get('is_admin', False):
-            return jsonify({'error': 'Admin privileges required'}), 403
+            return jsonify({'error': '需要管理员权限'}), 403
         
         # Get user
         user = get_user_by_id(payload['user_id'])
         if not user:
-            return jsonify({'error': 'User not found'}), 401
+            return jsonify({'error': '用户不存在'}), 401
         
         # Store user in g for route access
         g.user = user

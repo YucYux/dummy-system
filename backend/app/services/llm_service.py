@@ -3,7 +3,6 @@ LLM service for handling model calls with streaming and tool support.
 """
 
 import json
-from openai import OpenAI
 from app.models.model_config import get_model_by_id, get_default_model
 from app.tools import get_tools_for_llm, execute_tool
 import sys
@@ -17,6 +16,7 @@ SYSTEM_PROMPT = """You are a helpful AI assistant with access to various tools.
 When you need to perform calculations, get information, or complete tasks, use the available tools.
 Always be helpful, accurate, and concise in your responses.
 If you use a tool, explain what you're doing and share the results with the user."""
+REASONING_NOTE = """This model is configured as a reasoning model. When the reasoning effort is {effort}, allow extra internal evaluation before answering, and prioritize clarity."""
 
 
 class LLMService:
@@ -24,6 +24,8 @@ class LLMService:
     
     def __init__(self, model_id: str = None):
         """Initialize with a specific model or default."""
+        from openai import OpenAI
+        
         if model_id:
             self.model_config = get_model_by_id(model_id)
         else:
@@ -34,18 +36,10 @@ class LLMService:
         
         self.client = OpenAI(
             api_key=self.model_config['api_key'],
-            base_url=self.model_config['api_url'] + '/chat/completions' 
-                if not self.model_config['api_url'].endswith('/v1') 
-                else self.model_config['api_url']
-        )
-        
-        # Fix base_url - OpenAI client handles /chat/completions automatically
-        self.client = OpenAI(
-            api_key=self.model_config['api_key'],
             base_url=self.model_config['api_url']
         )
     
-    def chat_stream(self, messages: list, use_tools: bool = True):
+    def chat_stream(self, messages: list, use_tools: bool = True, reasoning_effort: str = None):
         """
         Stream chat completion with tool support.
         
@@ -60,7 +54,11 @@ class LLMService:
         
         try:
             # Prepare messages with system prompt
-            full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
+            effort = reasoning_effort or "auto"
+            prompt = SYSTEM_PROMPT
+            if self.model_config.get("is_reasoning", False):
+                prompt = f"{SYSTEM_PROMPT}\n\n{REASONING_NOTE.format(effort=effort)}"
+            full_messages = [{"role": "system", "content": prompt}] + messages
             
             # Prepare request parameters
             request_params = {
@@ -153,7 +151,7 @@ class LLMService:
         except Exception as e:
             yield {"type": "error", "message": str(e)}
     
-    def chat_with_tools(self, messages: list, max_iterations: int = 10):
+    def chat_with_tools(self, messages: list, max_iterations: int = 10, reasoning_effort: str = None):
         """
         Complete chat with automatic tool execution loop.
         
@@ -170,7 +168,7 @@ class LLMService:
             assistant_content = ""
             
             # Stream response
-            for event in self.chat_stream(current_messages):
+            for event in self.chat_stream(current_messages, reasoning_effort=reasoning_effort):
                 yield event
                 
                 if event["type"] == "content":

@@ -24,7 +24,8 @@ def list_models():
             'id': m['id'],
             'name': m['name'],
             'provider': m['provider'],
-            'is_default': m.get('is_default', False)
+            'is_default': m.get('is_default', False),
+            'is_reasoning': m.get('is_reasoning', False)
         })
     return jsonify({'models': safe_models})
 
@@ -44,7 +45,7 @@ def create_model():
     data = request.get_json()
     
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({'error': '未提供数据'}), 400
     
     model = add_model(data)
     return jsonify({'model': model}), 201
@@ -57,12 +58,12 @@ def edit_model(model_id):
     data = request.get_json()
     
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({'error': '未提供数据'}), 400
     
     model = update_model(model_id, data)
     
     if not model:
-        return jsonify({'error': 'Model not found'}), 404
+        return jsonify({'error': '模型不存在'}), 404
     
     return jsonify({'model': model})
 
@@ -74,6 +75,6 @@ def remove_model(model_id):
     success = delete_model(model_id)
     
     if not success:
-        return jsonify({'error': 'Model not found'}), 404
+        return jsonify({'error': '模型不存在'}), 404
     
-    return jsonify({'message': 'Model deleted successfully'})
+    return jsonify({'message': '模型删除成功'})

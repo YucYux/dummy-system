@@ -29,8 +29,9 @@ def new_conversation():
     
     title = data.get('title', 'New Chat')
     model_id = data.get('model_id')
+    reasoning_effort = data.get('reasoning_effort', 'auto')
     
-    conversation = create_conversation(g.user_id, title, model_id)
+    conversation = create_conversation(g.user_id, title, model_id, reasoning_effort)
     return jsonify({'conversation': conversation}), 201
 
 
@@ -41,7 +42,7 @@ def get_single_conversation(conversation_id):
     conversation = get_conversation(g.user_id, conversation_id)
     
     if not conversation:
-        return jsonify({'error': 'Conversation not found'}), 404
+        return jsonify({'error': '对话不存在'}), 404
     
     messages = get_messages(g.user_id, conversation_id)
     
@@ -58,17 +59,18 @@ def edit_conversation(conversation_id):
     data = request.get_json()
     
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({'error': '未提供数据'}), 400
     
     conversation = update_conversation(
         g.user_id, 
         conversation_id,
         title=data.get('title'),
-        model_id=data.get('model_id')
+        model_id=data.get('model_id'),
+        reasoning_effort=data.get('reasoning_effort')
     )
     
     if not conversation:
-        return jsonify({'error': 'Conversation not found'}), 404
+        return jsonify({'error': '对话不存在'}), 404
     
     return jsonify({'conversation': conversation})
 
@@ -80,9 +82,9 @@ def remove_conversation(conversation_id):
     success = delete_conversation(g.user_id, conversation_id)
     
     if not success:
-        return jsonify({'error': 'Conversation not found'}), 404
+        return jsonify({'error': '对话不存在'}), 404
     
-    return jsonify({'message': 'Conversation deleted successfully'})
+    return jsonify({'message': '对话删除成功'})
 
 
 @chat_bp.route('/tools', methods=['GET'])

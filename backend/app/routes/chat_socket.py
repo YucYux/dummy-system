@@ -38,17 +38,17 @@ def handle_authenticate(data):
     token = data.get('token')
     
     if not token:
-        emit('auth_error', {'error': 'No token provided'})
+        emit('auth_error', {'error': '未提供令牌'})
         return
     
     payload = decode_token(token)
     if not payload:
-        emit('auth_error', {'error': 'Invalid or expired token'})
+        emit('auth_error', {'error': '令牌无效或已过期'})
         return
     
     user = get_user_by_id(payload['user_id'])
     if not user:
-        emit('auth_error', {'error': 'User not found'})
+        emit('auth_error', {'error': '用户不存在'})
         return
     
     user_sessions[request.sid] = {
@@ -63,7 +63,7 @@ def handle_authenticate(data):
 def handle_join_conversation(data):
     """Join a conversation room."""
     if request.sid not in user_sessions:
-        emit('error', {'error': 'Not authenticated'})
+        emit('error', {'error': '未认证'})
         return
     
     conversation_id = data.get('conversation_id')
@@ -84,7 +84,7 @@ def handle_leave_conversation(data):
 def handle_send_message(data):
     """Handle incoming chat message and stream response."""
     if request.sid not in user_sessions:
-        emit('error', {'error': 'Not authenticated'})
+        emit('error', {'error': '未认证'})
         return
     
     session = user_sessions[request.sid]
@@ -93,15 +93,16 @@ def handle_send_message(data):
     conversation_id = data.get('conversation_id')
     content = data.get('content')
     model_id = data.get('model_id')
+    reasoning_effort = data.get('reasoning_effort') or 'auto'
     
     if not conversation_id or not content:
-        emit('error', {'error': 'Missing conversation_id or content'})
+        emit('error', {'error': '缺少对话ID或内容'})
         return
     
     # Verify conversation belongs to user
     conversation = get_conversation(user_id, conversation_id)
     if not conversation:
-        emit('error', {'error': 'Conversation not found'})
+        emit('error', {'error': '对话不存在'})
         return
     
     # Save user message
@@ -134,7 +135,7 @@ def handle_send_message(data):
     emit('stream_start', {})
     
     try:
-        for event in llm_service.chat_with_tools(llm_messages):
+        for event in llm_service.chat_with_tools(llm_messages, reasoning_effort=reasoning_effort):
             if event['type'] == 'content':
                 assistant_content += event['content']
                 emit('stream_content', {'content': event['content']})

@@ -23,7 +23,8 @@ def init_models_config():
                 "api_url": "https://api.openai.com/v1",
                 "api_key": "",
                 "enabled": True,
-                "is_default": True
+                "is_default": True,
+                "is_reasoning": False
             },
             {
                 "id": str(uuid.uuid4()),
@@ -33,7 +34,8 @@ def init_models_config():
                 "api_url": "https://api.openai.com/v1",
                 "api_key": "",
                 "enabled": True,
-                "is_default": False
+                "is_default": False,
+                "is_reasoning": False
             },
             {
                 "id": str(uuid.uuid4()),
@@ -43,7 +45,8 @@ def init_models_config():
                 "api_url": "https://api.anthropic.com",
                 "api_key": "",
                 "enabled": False,
-                "is_default": False
+                "is_default": False,
+                "is_reasoning": False
             }
         ]
         save_models_config(default_models)
@@ -107,7 +110,8 @@ def add_model(model_data: dict) -> dict:
         "api_url": model_data.get('api_url', ''),
         "api_key": model_data.get('api_key', ''),
         "enabled": model_data.get('enabled', False),
-        "is_default": False
+        "is_default": False,
+        "is_reasoning": model_data.get('is_reasoning', False)
     }
     
     models.append(new_model)
@@ -133,7 +137,8 @@ def update_model(model_id: str, model_data: dict) -> dict:
                 "api_url": model_data.get('api_url', model['api_url']),
                 "api_key": model_data.get('api_key', model['api_key']),
                 "enabled": model_data.get('enabled', model['enabled']),
-                "is_default": model_data.get('is_default', model['is_default'])
+                "is_default": model_data.get('is_default', model['is_default']),
+                "is_reasoning": model_data.get('is_reasoning', model.get('is_reasoning', False))
             })
             
             save_models_config(models)

@@ -8,4 +8,5 @@ httpx==0.26.0
 python-dotenv==1.0.0
 gevent==23.9.1
 gevent-websocket==0.10.1
-numpy>=1.24.0
+numpy==2.4.2
+pandas==3.0.1

@@ -78,12 +78,13 @@ export const socketService = {
     }
   },
   
-  sendMessage(conversationId, content, modelId = null) {
+  sendMessage(conversationId, content, modelId = null, reasoningEffort = 'auto') {
     if (socket?.connected) {
       socket.emit('send_message', {
         conversation_id: conversationId,
         content,
-        model_id: modelId
+        model_id: modelId,
+        reasoning_effort: reasoningEffort
       })
     }
   },

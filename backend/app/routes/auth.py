@@ -15,18 +15,18 @@ def login():
     data = request.get_json()
     
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({'error': '未提供数据'}), 400
     
     username = data.get('username')
     password = data.get('password')
     
     if not username or not password:
-        return jsonify({'error': 'Username and password are required'}), 400
+        return jsonify({'error': '用户名和密码不能为空'}), 400
     
     user = verify_user(username, password)
     
     if not user:
-        return jsonify({'error': 'Invalid username or password'}), 401
+        return jsonify({'error': '用户名或密码错误'}), 401
     
     token = generate_token(user['id'], user['is_admin'])
     
@@ -46,24 +46,24 @@ def register():
     data = request.get_json()
     
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({'error': '未提供数据'}), 400
     
     username = data.get('username')
     password = data.get('password')
     
     if not username or not password:
-        return jsonify({'error': 'Username and password are required'}), 400
+        return jsonify({'error': '用户名和密码不能为空'}), 400
     
     if len(username) < 3:
-        return jsonify({'error': 'Username must be at least 3 characters'}), 400
+        return jsonify({'error': '用户名至少需要3个字符'}), 400
     
     if len(password) < 6:
-        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+        return jsonify({'error': '密码至少需要6个字符'}), 400
     
     user = create_user(username, password)
     
     if not user:
-        return jsonify({'error': 'Username already exists'}), 409
+        return jsonify({'error': '用户名已存在'}), 409
     
     token = generate_token(user['id'], user['is_admin'])
     
@@ -95,16 +95,16 @@ def change_password():
     data = request.get_json()
     
     if not data:
-        return jsonify({'error': 'No data provided'}), 400
+        return jsonify({'error': '未提供数据'}), 400
     
     old_password = data.get('old_password')
     new_password = data.get('new_password')
     
     if not old_password or not new_password:
-        return jsonify({'error': 'Old and new password are required'}), 400
+        return jsonify({'error': '旧密码和新密码不能为空'}), 400
     
     if len(new_password) < 6:
-        return jsonify({'error': 'New password must be at least 6 characters'}), 400
+        return jsonify({'error': '新密码至少需要6个字符'}), 400
     
     conn = get_users_db()
     cursor = conn.cursor()
@@ -115,7 +115,7 @@ def change_password():
     
     if not cursor.fetchone():
         conn.close()
-        return jsonify({'error': 'Current password is incorrect'}), 401
+        return jsonify({'error': '当前密码不正确'}), 401
     
     new_hash = hash_password(new_password)
     cursor.execute('UPDATE users SET password_hash = ? WHERE id = ?',
@@ -123,4 +123,4 @@ def change_password():
     conn.commit()
     conn.close()
     
-    return jsonify({'message': 'Password changed successfully'})
+    return jsonify({'message': '密码修改成功'})

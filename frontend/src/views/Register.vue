@@ -4,44 +4,44 @@
       <div class="auth-card">
         <div class="auth-header">
           <h1>Dummy System</h1>
-          <p>Create a new account</p>
+          <p>创建新账户</p>
         </div>
         
         <form @submit.prevent="handleRegister" class="auth-form">
           <div class="input-group">
-            <label for="username">Username</label>
+            <label for="username">用户名</label>
             <input 
               id="username"
               v-model="username"
               type="text"
               class="input"
-              placeholder="Choose a username"
+              placeholder="设置用户名"
               minlength="3"
               required
             />
           </div>
           
           <div class="input-group">
-            <label for="password">Password</label>
+            <label for="password">密码</label>
             <input 
               id="password"
               v-model="password"
               type="password"
               class="input"
-              placeholder="Choose a password"
+              placeholder="设置密码"
               minlength="6"
               required
             />
           </div>
           
           <div class="input-group">
-            <label for="confirmPassword">Confirm Password</label>
+            <label for="confirmPassword">确认密码</label>
             <input 
               id="confirmPassword"
               v-model="confirmPassword"
               type="password"
               class="input"
-              placeholder="Confirm your password"
+              placeholder="再次输入密码"
               required
             />
           </div>
@@ -55,14 +55,14 @@
             class="btn btn-primary btn-lg"
             :disabled="loading"
           >
-            {{ loading ? 'Creating account...' : 'Create Account' }}
+            {{ loading ? '注册中...' : '注册' }}
           </button>
         </form>
         
         <div class="auth-footer">
           <p>
-            Already have an account?
-            <router-link to="/login">Sign in</router-link>
+            已有账号？
+            <router-link to="/login">立即登录</router-link>
           </p>
         </div>
       </div>
@@ -86,7 +86,7 @@ const error = ref('')
 
 async function handleRegister() {
   if (password.value !== confirmPassword.value) {
-    error.value = 'Passwords do not match'
+    error.value = '两次输入的密码不一致'
     return
   }
   
@@ -97,7 +97,7 @@ async function handleRegister() {
     await authStore.register(username.value, password.value)
     router.push('/')
   } catch (err) {
-    error.value = err.error || 'Registration failed. Please try again.'
+    error.value = err.error || '注册失败，请重试'
   } finally {
     loading.value = false
   }
