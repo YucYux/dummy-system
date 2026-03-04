@@ -93,6 +93,8 @@ npm --version    # 应显示 9.x.x 或更高
 
 ## 第二步：安装后端
 
+### 方式 A：使用 venv（推荐，适合大多数用户）
+
 ```bash
 # 进入后端目录
 cd backend
@@ -109,6 +111,24 @@ source venv/bin/activate
 # 安装 Python 依赖
 pip install -r requirements.txt
 ```
+
+### 方式 B：使用 conda（如果你已经在用 Anaconda/Miniconda）
+
+```bash
+# 进入后端目录
+cd backend
+
+# 创建 conda 环境（Python 3.9+）
+conda create -n dummy-system python=3.11
+
+# 激活环境
+conda activate dummy-system
+
+# 安装 Python 依赖
+pip install -r requirements.txt
+```
+
+> **注意**：选择其中一种方式即可。如果使用 conda，后续启动时也要用 `conda activate dummy-system` 而不是 `source venv/bin/activate`。
 
 ## 第三步：配置后端
 
@@ -152,10 +172,14 @@ npm install
 cd backend
 
 # 激活虚拟环境（每次新开终端都需要）
-# Linux/macOS:
+# 如果使用 venv:
+#   Linux/macOS:
 source venv/bin/activate
-# Windows:
+#   Windows:
 # venv\Scripts\activate
+
+# 如果使用 conda:
+# conda activate dummy-system
 
 # 启动服务
 python run.py
