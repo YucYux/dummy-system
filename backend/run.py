@@ -19,7 +19,7 @@ def main():
     
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
-║                    LBW Agent System                          ║
+║                      Dummy System                            ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Server running at: http://{config.SERVER_HOST}:{config.SERVER_PORT}                    ║
 ║  Debug mode: {str(config.DEBUG).ljust(46)}║

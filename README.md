@@ -1,30 +1,30 @@
-# LBW Agent 系统
+# Dummy System
 
-一个支持多用户的 AI Agent 系统，具备工具调用能力，后端使用 Flask，前端使用 Vue 3。
+一个即插即用的自主执行框架。通过模拟预定义的认知模式，实现系统同步并驱动连续动作序列。
 
 ## 功能特性
 
-- **多用户支持**：每个用户拥有独立的对话历史（独立SQLite文件，便于迁移和删除）
-- **管理员后台**：管理用户、配置多个LLM模型
-- **多模型支持**：支持 OpenAI、Anthropic 或任何兼容 OpenAI API 的服务
-- **工具调用**：LLM 可以调用工具执行操作，用户可以实时看到调用状态
-- **流式输出**：实时显示 LLM 生成内容（打字机效果）
-- **Markdown 渲染**：支持代码语法高亮
+- **多用户同步**：每个用户拥有独立的会话数据（独立存储，便于迁移和管理）
+- **控制终端**：管理用户、配置多个执行模型
+- **多模式支持**：支持 OpenAI、Anthropic 或任何兼容接口的服务
+- **工具调用**：系统可以调用外部工具执行操作，用户可实时观察执行状态
+- **流式输出**：实时显示系统输出内容
+- **格式化渲染**：支持 Markdown 和代码语法高亮
 
 ## 项目结构
 
 ```
-LbwAgent/
+dummy-system/
 ├── backend/                 # Flask 后端
 │   ├── app/
-│   │   ├── models/          # 数据库模型
+│   │   ├── models/          # 数据模型
 │   │   ├── routes/          # API 路由
-│   │   ├── services/        # 业务逻辑（LLM调用）
-│   │   ├── tools/           # Agent 工具
+│   │   ├── services/        # 核心服务
+│   │   ├── tools/           # 工具插件
 │   │   └── utils/           # 工具函数
-│   ├── config.py            # ⭐ 配置文件（端口、管理员密码等）
+│   ├── config.py            # ⭐ 配置文件（端口、初始密码等）
 │   ├── requirements.txt     # Python 依赖
-│   └── run.py               # 启动入口
+│   └── run.py               # 入口
 ├── frontend/                # Vue 3 前端
 │   ├── src/
 │   │   ├── api/             # API 客户端
@@ -37,8 +37,8 @@ LbwAgent/
 
 ## 环境要求
 
-- Python 3.9 或更高版本
-- Node.js 18 或更高版本（包含 npm）
+- Python 3.9+
+- Node.js 18+（包含 npm）
 
 ---
 
@@ -79,7 +79,7 @@ brew install node
 
 1. 访问 https://nodejs.org/
 2. 下载 LTS（长期支持）版本
-3. 运行安装程序，一路点击"下一步"即可
+3. 运行安装程序，按提示完成安装
 
 ### 验证安装
 
@@ -116,11 +116,11 @@ pip install -r requirements.txt
 SERVER_HOST = "0.0.0.0"    # 监听地址
 SERVER_PORT = 5000          # 端口号
 
-# 管理员账号（生产环境务必修改！）
+# 管理员账号（生产环境务必修改）
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123"
 
-# 安全密钥（生产环境务必修改！）
+# 安全密钥（生产环境务必修改）
 SECRET_KEY = "change-this-to-a-random-secret-key-in-production"
 ```
 
@@ -154,14 +154,14 @@ source venv/bin/activate
 # Windows:
 # venv\Scripts\activate
 
-# 启动后端服务
+# 启动服务
 python run.py
 ```
 
-后端启动后会显示：
+启动后会显示：
 ```
 ╔══════════════════════════════════════════════════════════════╗
-║                    LBW Agent System                          ║
+║                      Dummy System                            ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  Server running at: http://0.0.0.0:5000                      ║
 ║  Admin credentials:                                          ║
@@ -182,7 +182,7 @@ cd frontend
 npm run dev
 ```
 
-前端启动后会显示：
+启动后会显示：
 ```
   VITE v5.x.x  ready in xxx ms
 
@@ -204,30 +204,30 @@ npm run dev
 ## 管理员操作
 
 1. 使用管理员账号登录
-2. 点击左下角的 "Settings" 进入管理后台
-3. 在 "Model Configuration" 中配置 LLM 模型：
+2. 点击左下角的 "Settings" 进入控制面板
+3. 在 "Model Configuration" 中配置执行模型：
    - **Name**：显示名称
    - **Provider**：提供商（openai/anthropic/custom）
    - **Model ID**：模型标识（如 gpt-4o、claude-3-5-sonnet-20241022）
    - **API URL**：API 地址（如 https://api.openai.com/v1）
-   - **API Key**：你的 API 密钥
-   - **Enabled**：是否启用（启用后用户可选择）
+   - **API Key**：API 密钥
+   - **Enabled**：是否启用
    - **Default**：是否为默认模型
 4. 在 "User Management" 中管理用户
 
 ## 普通用户操作
 
 1. 登录或注册账号
-2. 点击 "New Chat" 创建新对话
+2. 点击 "New Chat" 创建新会话
 3. 在右上角选择要使用的模型
-4. 输入消息开始对话
-5. LLM 调用工具时，界面会显示工具名称和执行结果
+4. 输入指令开始交互
+5. 系统调用工具时，界面会显示工具名称和执行结果
 
 ---
 
 # 添加自定义工具
 
-工具定义在 `backend/app/tools/builtin.py` 文件中。
+工具插件定义在 `backend/app/tools/builtin.py` 文件中。
 
 ## 添加新工具的步骤
 
@@ -235,17 +235,17 @@ npm run dev
 
 ```python
 def tool_my_custom_tool(param1: str, param2: int) -> dict:
-    """你的工具逻辑"""
+    """工具逻辑"""
     result = do_something(param1, param2)
     return {"result": result}
 ```
 
-2. 在 `register_builtin_tools()` 函数中注册工具：
+2. 在 `register_builtin_tools()` 函数中注册：
 
 ```python
 registry.register(
     name="my_custom_tool",
-    description="这个工具的功能描述，LLM 会根据此决定何时调用",
+    description="功能描述，系统会根据此决定何时调用",
     parameters={
         "type": "object",
         "properties": {
@@ -279,12 +279,12 @@ registry.register(
 # 数据存储
 
 - **用户数据库**：`backend/data/users.db`（存储用户账号信息）
-- **用户对话**：`backend/data/user_data/<用户ID>.db`（每个用户独立文件）
+- **用户会话**：`backend/data/user_data/<用户ID>.db`（每个用户独立文件）
 - **模型配置**：`backend/data/models.json`
 
-每个用户有独立的 SQLite 文件，便于：
+每个用户有独立的存储文件，便于：
 - 删除用户数据（直接删除对应文件）
-- 迁移用户数据（复制文件到新服务器）
+- 迁移用户数据（复制文件到新环境）
 - 单独备份
 
 ---

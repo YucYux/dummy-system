@@ -3,7 +3,7 @@
     <div class="auth-container">
       <div class="auth-card">
         <div class="auth-header">
-          <h1>LBW Agent</h1>
+          <h1>Dummy System</h1>
           <p>Sign in to your account</p>
         </div>
         

@@ -3,7 +3,7 @@
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <h2>LBW Agent</h2>
+        <h2>Dummy System</h2>
         <button @click="createNewChat" class="btn btn-primary btn-sm">
           <span>+</span> New Chat
         </button>
@@ -51,7 +51,7 @@
     <!-- Main Chat Area -->
     <main class="chat-main">
       <div v-if="!currentConversationId" class="welcome-screen">
-        <h1>Welcome to LBW Agent</h1>
+        <h1>Welcome to Dummy System</h1>
         <p>Start a conversation with the AI assistant</p>
         <button @click="createNewChat" class="btn btn-primary btn-lg">
           Start New Chat
