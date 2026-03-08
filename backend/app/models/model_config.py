@@ -24,7 +24,8 @@ def init_models_config():
                 "api_key": "",
                 "enabled": True,
                 "is_default": True,
-                "is_reasoning": False
+                "is_reasoning": False,
+                "minimax_interleaved_cot": False
             },
             {
                 "id": str(uuid.uuid4()),
@@ -35,7 +36,8 @@ def init_models_config():
                 "api_key": "",
                 "enabled": True,
                 "is_default": False,
-                "is_reasoning": False
+                "is_reasoning": False,
+                "minimax_interleaved_cot": False
             },
             {
                 "id": str(uuid.uuid4()),
@@ -46,7 +48,8 @@ def init_models_config():
                 "api_key": "",
                 "enabled": False,
                 "is_default": False,
-                "is_reasoning": False
+                "is_reasoning": False,
+                "minimax_interleaved_cot": False
             }
         ]
         save_models_config(default_models)
@@ -126,6 +129,8 @@ def add_model(model_data: dict) -> dict:
     models = load_models_config()
 
     make_default = model_data.get('is_default', False) and model_data.get('enabled', False)
+    is_reasoning = model_data.get('is_reasoning', False)
+    minimax_interleaved_cot = model_data.get('minimax_interleaved_cot', False) and is_reasoning
 
     if make_default:
         for model in models:
@@ -140,7 +145,8 @@ def add_model(model_data: dict) -> dict:
         "api_key": model_data.get('api_key', ''),
         "enabled": model_data.get('enabled', False),
         "is_default": make_default,
-        "is_reasoning": model_data.get('is_reasoning', False)
+        "is_reasoning": is_reasoning,
+        "minimax_interleaved_cot": minimax_interleaved_cot
     }
 
     models.append(new_model)
@@ -156,6 +162,12 @@ def update_model(model_id: str, model_data: dict) -> dict:
     
     for i, model in enumerate(models):
         if model['id'] == model_id:
+            next_is_reasoning = model_data.get('is_reasoning', model.get('is_reasoning', False))
+            next_minimax_interleaved_cot = (
+                model_data.get('minimax_interleaved_cot', model.get('minimax_interleaved_cot', False))
+                and next_is_reasoning
+            )
+
             # If setting as default, unset other defaults first
             if model_data.get('is_default', False) and model_data.get('enabled', model['enabled']):
                 for m in models:
@@ -169,7 +181,8 @@ def update_model(model_id: str, model_data: dict) -> dict:
                 "api_key": model_data.get('api_key', model['api_key']),
                 "enabled": model_data.get('enabled', model['enabled']),
                 "is_default": model_data.get('is_default', model['is_default']) and model_data.get('enabled', model['enabled']),
-                "is_reasoning": model_data.get('is_reasoning', model.get('is_reasoning', False))
+                "is_reasoning": next_is_reasoning,
+                "minimax_interleaved_cot": next_minimax_interleaved_cot
             })
 
             models = ensure_default_model(models)

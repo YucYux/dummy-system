@@ -135,7 +135,10 @@
           
           <div class="input-group">
             <label>模型 ID</label>
-            <input v-model="modelForm.model_id" type="text" class="input" placeholder="例如: gpt-4o" required />
+            <input v-model="modelForm.model_id" type="text" class="input" placeholder="例如: openai/gpt-4o 或 minimax/minimax-m2.5" required />
+            <p v-if="isMinimaxModel" class="field-hint minimax-hint">
+              检测到 MiniMax 模型，建议开启「MiniMax 交错思维链」以提升 Agent 多轮工具调用表现。
+            </p>
           </div>
           
           <div class="input-group">
@@ -160,6 +163,15 @@
             <label>
               <input type="checkbox" v-model="modelForm.is_reasoning" />
               推理模型
+            </label>
+            <label :class="['checkbox-with-tooltip', { disabled: !canEnableMinimaxCot }]">
+              <input
+                type="checkbox"
+                v-model="modelForm.minimax_interleaved_cot"
+                :disabled="!canEnableMinimaxCot"
+              />
+              MiniMax 交错思维链
+              <span class="tooltip-trigger" :title="minimaxCotTooltip">?</span>
             </label>
           </div>
           
@@ -208,7 +220,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import api from '@/api'
 
@@ -228,8 +240,27 @@ const modelForm = ref({
   api_key: '',
   enabled: true,
   is_default: false,
-  is_reasoning: false
+  is_reasoning: false,
+  minimax_interleaved_cot: false
 })
+
+const minimaxCotTooltip = '交错思维链是 MiniMax 提出的机制：在每轮对话中保留模型的历史思考过程（reasoning），以 <think> 标签拼接到内容中传给下一轮，可显著提升多轮工具调用场景下的任务成功率。目前仅建议在 MiniMax 系列模型上开启。'
+
+const isMinimaxModel = computed(() => {
+  const id = (modelForm.value.model_id || '').toLowerCase()
+  return id.includes('minimax')
+})
+
+const canEnableMinimaxCot = computed(() => modelForm.value.is_reasoning)
+
+watch(
+  () => modelForm.value.is_reasoning,
+  (isReasoning) => {
+    if (!isReasoning) {
+      modelForm.value.minimax_interleaved_cot = false
+    }
+  }
+)
 
 const userForm = ref({
   username: '',
@@ -249,16 +280,26 @@ async function loadUsers() {
 
 function editModel(model) {
   editingModel.value = model
-  modelForm.value = { ...model }
+  modelForm.value = {
+    ...model,
+    minimax_interleaved_cot: model.minimax_interleaved_cot === true
+  }
   showModelModal.value = true
 }
 
 async function saveModel() {
   try {
+    const payload = {
+      ...modelForm.value,
+      minimax_interleaved_cot: modelForm.value.is_reasoning
+        ? modelForm.value.minimax_interleaved_cot
+        : false
+    }
+
     if (editingModel.value) {
-      await api.updateModel(editingModel.value.id, modelForm.value)
+      await api.updateModel(editingModel.value.id, payload)
     } else {
-      await api.createModel(modelForm.value)
+      await api.createModel(payload)
     }
     await loadModels()
     closeModelModal()
@@ -289,7 +330,8 @@ function closeModelModal() {
     api_key: '',
     enabled: true,
     is_default: false,
-    is_reasoning: false
+    is_reasoning: false,
+    minimax_interleaved_cot: false
   }
 }
 
@@ -528,6 +570,7 @@ onMounted(() => {
 
 .checkbox-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 1.5rem;
   margin-bottom: 1rem;
   
@@ -538,6 +581,47 @@ onMounted(() => {
     font-size: 0.875rem;
     cursor: pointer;
   }
+}
+
+.checkbox-with-tooltip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+
+  &.disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+}
+
+.tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: var(--border-color);
+  color: var(--bg-primary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: help;
+  flex-shrink: 0;
+  
+  &:hover {
+    background: var(--text-muted);
+  }
+}
+
+.field-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.minimax-hint {
+  color: var(--primary-color, #6366f1);
 }
 
 .modal-actions {

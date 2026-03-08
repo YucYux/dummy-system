@@ -19,6 +19,16 @@ If you use a tool, explain what you're doing and share the results with the user
 REASONING_NOTE = """This model is configured as a reasoning model. When the reasoning effort is {effort}, allow extra internal evaluation before answering, and prioritize clarity."""
 
 
+def merge_reasoning_into_content(reasoning: str, content: str) -> str:
+    """
+    Merge reasoning into content for MiniMax Interleaved Chain-of-Thought.
+    Format: <think>\n{reasoning}\n</think>\n{content}
+    """
+    if reasoning:
+        return f"<think>\n{reasoning}\n</think>\n{content or ''}"
+    return content
+
+
 class LLMService:
     """Service for interacting with LLM APIs."""
     
@@ -45,10 +55,11 @@ class LLMService:
         
         Yields events:
         - {"type": "content", "content": "..."}  - Text content
+        - {"type": "reasoning", "content": "..."}  - Reasoning content (for MiniMax etc.)
         - {"type": "tool_call_start", "tool": "...", "id": "..."}  - Tool call starting
         - {"type": "tool_call_args", "args": "..."}  - Tool arguments (streaming)
         - {"type": "tool_call_end", "result": {...}}  - Tool call result
-        - {"type": "done", "finish_reason": "..."}  - Stream complete
+        - {"type": "done", "finish_reason": "...", "reasoning": "..."}  - Stream complete
         - {"type": "error", "message": "..."}  - Error occurred
         """
         
@@ -80,7 +91,12 @@ class LLMService:
             response = self.client.chat.completions.create(**request_params)
             
             collected_content = ""
+            collected_reasoning = ""
             tool_calls = {}
+            use_interleaved_cot = (
+                self.model_config.get("minimax_interleaved_cot", False)
+                and self.model_config.get("is_reasoning", False)
+            )
             
             for chunk in response:
                 delta = chunk.choices[0].delta if chunk.choices else None
@@ -92,6 +108,11 @@ class LLMService:
                 if delta.content:
                     collected_content += delta.content
                     yield {"type": "content", "content": delta.content}
+                
+                # Handle reasoning content (only when MiniMax Interleaved CoT is enabled)
+                if use_interleaved_cot and hasattr(delta, 'reasoning') and delta.reasoning:
+                    collected_reasoning += delta.reasoning
+                    yield {"type": "reasoning", "content": delta.reasoning}
                 
                 # Handle tool calls
                 if delta.tool_calls:
@@ -125,6 +146,17 @@ class LLMService:
                 if chunk.choices[0].finish_reason:
                     finish_reason = chunk.choices[0].finish_reason
                     
+                    # Try to get reasoning from the chunk (only when Interleaved CoT is enabled)
+                    if use_interleaved_cot and hasattr(chunk, 'choices') and chunk.choices:
+                        choice = chunk.choices[0]
+                        chunk_reasoning = None
+                        if hasattr(choice, 'message') and choice.message and hasattr(choice.message, 'reasoning'):
+                            chunk_reasoning = choice.message.reasoning
+                        elif hasattr(choice, 'delta') and choice.delta and hasattr(choice.delta, 'reasoning') and choice.delta.reasoning:
+                            chunk_reasoning = choice.delta.reasoning
+                        if chunk_reasoning:
+                            collected_reasoning += chunk_reasoning
+                    
                     if finish_reason == "tool_calls":
                         # Execute tool calls
                         for tc_id, tc_data in tool_calls.items():
@@ -146,7 +178,12 @@ class LLMService:
                                     "error": f"Invalid arguments: {str(e)}"
                                 }
                     
-                    yield {"type": "done", "finish_reason": finish_reason}
+                    # Include reasoning in the done event when Interleaved CoT is enabled
+                    yield {
+                        "type": "done",
+                        "finish_reason": finish_reason,
+                        "reasoning": (collected_reasoning if collected_reasoning else None) if use_interleaved_cot else None
+                    }
         
         except Exception as e:
             yield {"type": "error", "message": str(e)}
@@ -156,6 +193,9 @@ class LLMService:
         Complete chat with automatic tool execution loop.
         
         This handles the full conversation including tool calls and their responses.
+        For reasoning models (like MiniMax), it preserves reasoning history to improve
+        Agent task success rates.
+        
         Yields events throughout the process.
         """
         current_messages = messages.copy()
@@ -166,6 +206,7 @@ class LLMService:
             
             tool_calls_made = []
             assistant_content = ""
+            assistant_reasoning = ""
             
             # Stream response
             for event in self.chat_stream(current_messages, reasoning_effort=reasoning_effort):
@@ -174,20 +215,34 @@ class LLMService:
                 if event["type"] == "content":
                     assistant_content += event["content"]
                 
+                elif event["type"] == "reasoning":
+                    assistant_reasoning += event["content"]
+                
                 elif event["type"] == "tool_call_end":
                     tool_calls_made.append(event)
                 
                 elif event["type"] == "done":
+                    # Capture any reasoning from the done event
+                    if event.get("reasoning"):
+                        assistant_reasoning = event["reasoning"]
+                    
                     if event["finish_reason"] != "tool_calls":
                         # No more tool calls, we're done
                         return
             
             # If tool calls were made, add them to messages and continue
             if tool_calls_made:
-                # Add assistant message with tool calls
+                # When MiniMax Interleaved CoT is enabled, merge reasoning into content
+                use_interleaved_cot = (
+                    self.model_config.get("minimax_interleaved_cot", False)
+                    and self.model_config.get("is_reasoning", False)
+                )
+                merged_content = merge_reasoning_into_content(assistant_reasoning, assistant_content) if use_interleaved_cot else assistant_content
+                
+                # Add assistant message with tool calls (using merged content)
                 assistant_msg = {
                     "role": "assistant",
-                    "content": assistant_content or None,
+                    "content": merged_content if merged_content else None,
                     "tool_calls": [
                         {
                             "id": tc["id"],
