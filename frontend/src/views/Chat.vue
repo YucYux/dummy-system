@@ -301,6 +301,10 @@ function selectReasoning(value) {
 async function createNewChat() {
   const conv = await chatStore.createConversation()
   currentConversationId.value = conv.id
+  // 同步更新本地的 selectedModelId 为新对话的模型
+  if (chatStore.selectedModel) {
+    selectedModelId.value = chatStore.selectedModel.id
+  }
   socketService.joinConversation(conv.id)
 }
 

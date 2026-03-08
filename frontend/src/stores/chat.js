@@ -140,6 +140,7 @@ export const useChatStore = defineStore('chat', () => {
     clearCurrent,
     reasoningEffort,
     setReasoningEffort,
+    setSelectedModel,
     resetReasoningEffort
   }
 })
