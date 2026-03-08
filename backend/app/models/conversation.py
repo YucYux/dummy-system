@@ -140,7 +140,7 @@ def delete_conversation(user_id: str, conversation_id: str) -> bool:
 
 
 def add_message(user_id: str, conversation_id: str, role: str, content: str, 
-                tool_calls: list = None, tool_call_id: str = None) -> dict:
+                tool_calls: list = None, tool_call_id: str = None, parts: list = None) -> dict:
     """Add a message to a conversation."""
     conn = get_user_db(user_id)
     cursor = conn.cursor()
@@ -149,11 +149,12 @@ def add_message(user_id: str, conversation_id: str, role: str, content: str,
     now = datetime.now().isoformat()
     
     tool_calls_json = json.dumps(tool_calls) if tool_calls else None
+    parts_json = json.dumps(parts) if parts else None
     
     cursor.execute('''
-        INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (message_id, conversation_id, role, content, tool_calls_json, tool_call_id, now))
+        INSERT INTO messages (id, conversation_id, role, content, tool_calls, tool_call_id, parts, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (message_id, conversation_id, role, content, tool_calls_json, tool_call_id, parts_json, now))
     
     # Update conversation updated_at
     cursor.execute('''
@@ -170,6 +171,7 @@ def add_message(user_id: str, conversation_id: str, role: str, content: str,
         'content': content,
         'tool_calls': tool_calls,
         'tool_call_id': tool_call_id,
+        'parts': parts,
         'created_at': now
     }
 
@@ -180,7 +182,7 @@ def get_messages(user_id: str, conversation_id: str) -> list:
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT id, conversation_id, role, content, tool_calls, tool_call_id, created_at
+        SELECT id, conversation_id, role, content, tool_calls, tool_call_id, parts, created_at
         FROM messages
         WHERE conversation_id = ?
         ORDER BY created_at ASC
@@ -192,6 +194,7 @@ def get_messages(user_id: str, conversation_id: str) -> list:
     messages = []
     for row in rows:
         tool_calls = json.loads(row['tool_calls']) if row['tool_calls'] else None
+        parts = json.loads(row['parts']) if row['parts'] else None
         messages.append({
             'id': row['id'],
             'conversation_id': row['conversation_id'],
@@ -199,6 +202,7 @@ def get_messages(user_id: str, conversation_id: str) -> list:
             'content': row['content'],
             'tool_calls': tool_calls,
             'tool_call_id': row['tool_call_id'],
+            'parts': parts,
             'created_at': row['created_at']
         })
     

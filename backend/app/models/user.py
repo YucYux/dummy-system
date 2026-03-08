@@ -225,10 +225,17 @@ def init_user_db(user_id: str):
             content TEXT NOT NULL,
             tool_calls TEXT,
             tool_call_id TEXT,
+            parts TEXT,
             created_at TEXT NOT NULL,
             FOREIGN KEY (conversation_id) REFERENCES conversations (id)
         )
     ''')
+    
+    # Migration: Add parts column if it doesn't exist
+    try:
+        cursor.execute("SELECT parts FROM messages LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE messages ADD COLUMN parts TEXT")
     
     conn.commit()
     conn.close()

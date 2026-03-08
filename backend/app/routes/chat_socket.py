@@ -137,6 +137,7 @@ def handle_send_message(data):
     # Stream response
     assistant_content = ""
     tool_calls_data = []
+    parts_data = []
     
     emit_and_flush('stream_start', {})
     
@@ -145,11 +146,24 @@ def handle_send_message(data):
             if event['type'] == 'content':
                 assistant_content += event['content']
                 emit_and_flush('stream_content', {'content': event['content']})
+                
+                # Track content parts
+                if parts_data and parts_data[-1]['type'] == 'content':
+                    parts_data[-1]['text'] += event['content']
+                else:
+                    parts_data.append({'type': 'content', 'text': event['content']})
             
             elif event['type'] == 'tool_call_start':
                 emit_and_flush('tool_call_start', {
                     'id': event['id'],
                     'tool': event['tool']
+                })
+                
+                # Track tool call parts
+                parts_data.append({
+                    'type': 'tool_call',
+                    'name': event['tool'],
+                    'collapsed': True
                 })
             
             elif event['type'] == 'tool_call_args':
@@ -178,13 +192,14 @@ def handle_send_message(data):
                 emit('stream_error', {'error': event['message']})
                 return
         
-        # Save assistant message
+        # Save assistant message with parts
         assistant_msg = add_message(
             user_id, 
             conversation_id, 
             'assistant', 
             assistant_content,
-            tool_calls=tool_calls_data if tool_calls_data else None
+            tool_calls=tool_calls_data if tool_calls_data else None,
+            parts=parts_data if parts_data else None
         )
         
         emit('stream_end', {'message': assistant_msg})

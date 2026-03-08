@@ -225,45 +225,55 @@
                 {{ message.role === 'user' ? '👤' : '🤖' }}
               </div>
               <div class="message-content">
-                <div v-if="message.role === 'assistant'" v-html="renderMarkdown(message.content)"></div>
-                <div v-else>{{ message.content }}</div>
+                <!-- 用户消息 -->
+                <div v-if="message.role === 'user'">{{ message.content }}</div>
                 
-                <div v-if="message.tool_calls && message.tool_calls.length" class="tool-calls">
-                  <div v-for="tc in message.tool_calls" :key="tc.id" class="tool-call">
-                    <span class="tool-icon">🔧</span>
-                    <span class="tool-name">{{ tc.function?.name }}</span>
-                  </div>
-                </div>
+                <!-- 助手消息：按顺序渲染 parts -->
+                <template v-else-if="message.role === 'assistant'">
+                  <template v-for="(part, idx) in getMessageParts(message)" :key="idx">
+                    <div v-if="part.type === 'content'" v-html="renderMarkdown(part.text)"></div>
+                    <div v-else-if="part.type === 'tool_call'" class="tool-calls completed">
+                      <div class="tool-call" :class="{ collapsed: part.collapsed }" @click="part.collapsed = !part.collapsed">
+                        <span class="tool-icon">✓</span>
+                        <span class="tool-name">已调用: {{ part.name }}</span>
+                        <span class="collapse-hint">{{ part.collapsed ? '展开' : '收起' }}</span>
+                      </div>
+                    </div>
+                  </template>
+                </template>
               </div>
             </div>
             
-            <div v-if="isStreaming" key="streaming-msg" class="message assistant streaming-message">
+            <div v-if="isStreaming" :key="streamingMessageId" class="message assistant streaming-message">
               <div class="message-avatar">🤖</div>
               <div class="message-content">
                 <!-- 思考状态提示 -->
-                <div v-if="!streamingContent && activeToolCalls.length === 0" class="thinking-indicator">
+                <div v-if="streamingParts.length === 0" class="thinking-indicator">
                   <span class="thinking-dots">
                     <span></span><span></span><span></span>
                   </span>
                   <span class="thinking-text">正在思考...</span>
                 </div>
                 
-                <!-- 流式内容 -->
-                <div v-if="streamingContent" v-html="renderMarkdown(streamingContent)"></div>
-                
-                <!-- 工具调用 -->
-                <div v-if="activeToolCalls.length" class="tool-calls active">
-                  <div v-for="tc in activeToolCalls" :key="tc.id" class="tool-call">
-                    <span class="tool-icon spinning">⚙️</span>
-                    <span class="tool-name">正在调用: {{ tc.name }}</span>
-                    <div v-if="tc.result" class="tool-result">
-                      <pre>{{ JSON.stringify(tc.result, null, 2) }}</pre>
+                <!-- 按时间顺序渲染内容和工具调用 -->
+                <template v-for="(part, index) in streamingParts" :key="index">
+                  <!-- 文字内容 -->
+                  <div v-if="part.type === 'content'" class="streaming-text-part">
+                    <div v-html="renderMarkdown(part.text)"></div>
+                  </div>
+                  
+                  <!-- 工具调用 -->
+                  <div v-else-if="part.type === 'tool_call'" class="tool-calls" :class="{ active: !part.toolCall.result, completed: part.toolCall.result }">
+                    <div class="tool-call">
+                      <span v-if="!part.toolCall.result" class="tool-icon spinning">⚙️</span>
+                      <span v-else class="tool-icon">✓</span>
+                      <span class="tool-name">{{ part.toolCall.result ? '已调用' : '正在调用' }}: {{ part.toolCall.name }}</span>
                     </div>
                   </div>
-                </div>
+                </template>
                 
-                <!-- 光标 -->
-                <span v-if="streamingContent" class="typing-indicator">▊</span>
+                <!-- 流式光标 -->
+                <span v-if="streamingParts.length > 0" class="typing-cursor"></span>
               </div>
             </div>
           </TransitionGroup>
@@ -320,6 +330,8 @@ const inputMessage = ref('')
 const isStreaming = ref(false)
 const streamingContent = ref('')
 const activeToolCalls = ref([])
+const streamingParts = ref([])
+const streamingMessageId = ref(null)
 const messagesContainer = ref(null)
 const currentConversationId = ref(null)
 
@@ -371,6 +383,32 @@ function renderMarkdown(content) {
   if (!content) return ''
   const html = marked.parse(content)
   return DOMPurify.sanitize(html)
+}
+
+function getMessageParts(message) {
+  // 如果消息已经有 parts（从数据库或流式输出保存的），直接使用
+  if (message.parts && message.parts.length > 0) {
+    return message.parts
+  }
+  
+  // 否则，从 content 和 tool_calls 生成 parts（兼容旧消息）
+  const parts = []
+  
+  if (message.content) {
+    parts.push({ type: 'content', text: message.content })
+  }
+  
+  if (message.tool_calls && message.tool_calls.length > 0) {
+    for (const tc of message.tool_calls) {
+      parts.push({
+        type: 'tool_call',
+        name: tc.function?.name || tc.name || 'unknown',
+        collapsed: true
+      })
+    }
+  }
+  
+  return parts
 }
 
 function scrollToBottom() {
@@ -564,6 +602,8 @@ function resetStreamingState() {
   isStreaming.value = false
   streamingContent.value = ''
   activeToolCalls.value = []
+  streamingParts.value = []
+  streamingMessageId.value = null
 }
 
 function handleModelChange() {
@@ -611,6 +651,8 @@ function onStreamStart() {
   isStreaming.value = true
   streamingContent.value = ''
   activeToolCalls.value = []
+  streamingParts.value = []
+  streamingMessageId.value = `streaming-${Date.now()}`
   
   requestAnimationFrame(() => {
     scrollToBottom()
@@ -619,14 +661,36 @@ function onStreamStart() {
 
 function onStreamContent(data) {
   streamingContent.value += data.content
+  
+  const parts = streamingParts.value
+  const lastPart = parts[parts.length - 1]
+  if (lastPart && lastPart.type === 'content') {
+    lastPart.text += data.content
+  } else {
+    parts.push({ type: 'content', text: data.content })
+  }
+  
   scrollToBottom()
 }
 
 function onStreamEnd(data) {
-  isStreaming.value = false
-  chatStore.addMessage(data.message)
-  streamingContent.value = ''
-  activeToolCalls.value = []
+  // 将 clientId 附加到消息，使其与流式消息使用相同的 key，避免闪烁
+  const messageWithClientId = {
+    ...data.message,
+    _clientId: streamingMessageId.value
+  }
+  
+  chatStore.addMessage(messageWithClientId)
+  
+  // 延迟设置 isStreaming 为 false，让 Vue 能平滑过渡
+  nextTick(() => {
+    isStreaming.value = false
+    streamingContent.value = ''
+    activeToolCalls.value = []
+    streamingParts.value = []
+    streamingMessageId.value = null
+  })
+  
   scrollToBottom()
 }
 
@@ -637,12 +701,19 @@ function onStreamError(data) {
 }
 
 function onToolCallStart(data) {
-  activeToolCalls.value.push({
+  const toolCall = {
     id: data.id,
     name: data.tool,
     args: '',
     result: null
+  }
+  activeToolCalls.value.push(toolCall)
+  
+  streamingParts.value.push({
+    type: 'tool_call',
+    toolCall: toolCall
   })
+  
   scrollToBottom()
 }
 
@@ -1177,6 +1248,16 @@ watch(() => chatStore.selectedModel, (model) => {
     margin: 0.75rem 0;
     padding-left: 1.5rem;
   }
+  :deep(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0;
+  }
+  :deep(th), :deep(td) {
+    border: 1px solid var(--border-color);
+    padding: 0.5rem;
+    text-align: left;
+  }
 }
 
 .tool-calls {
@@ -1186,14 +1267,33 @@ watch(() => chatStore.selectedModel, (model) => {
   
   &.active {
     border-color: var(--primary-color);
+    border-top: none;
+    padding-top: 0;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  &.completed {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+}
+
+.streaming-text-part {
+  margin-bottom: 0.5rem;
+  
+  &:last-child {
+    margin-bottom: 0;
   }
 }
 
 .tool-call {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem;
+  padding: 0.5rem 0.75rem;
   background-color: var(--bg-tertiary);
   border-radius: 6px;
   font-size: 0.8125rem;
@@ -1202,9 +1302,20 @@ watch(() => chatStore.selectedModel, (model) => {
   &:last-child {
     margin-bottom: 0;
   }
+  
+  .completed & {
+    cursor: pointer;
+    transition: background-color 0.2s;
+    
+    &:hover {
+      background-color: var(--bg-secondary);
+    }
+  }
 }
 
 .tool-icon {
+  flex-shrink: 0;
+  
   &.spinning {
     animation: spin 1s linear infinite;
   }
@@ -1217,6 +1328,34 @@ watch(() => chatStore.selectedModel, (model) => {
 
 .tool-name {
   font-weight: 500;
+  flex: 1;
+}
+
+.collapse-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.2s;
+  
+  .tool-call:hover & {
+    opacity: 1;
+  }
+}
+
+// 流式光标
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background-color: var(--text-primary);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 1s step-end infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 .tool-result {
@@ -1288,22 +1427,6 @@ watch(() => chatStore.selectedModel, (model) => {
 }
 .list-leave-active {
   position: absolute;
-}
-
-/* 光标跳动 */
-.typing-indicator {
-  display: inline-block;
-  width: 8px;
-  height: 1.2em;
-  background-color: var(--text-primary, #333);
-  vertical-align: middle;
-  margin-left: 4px;
-  animation: blink 1s step-end infinite;
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
 }
 
 .streaming-message .message-content {
