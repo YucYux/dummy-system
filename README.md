@@ -6,7 +6,7 @@
 
 - **多用户同步**：每个用户拥有独立的会话数据（独立存储，便于迁移和管理）
 - **控制终端**：管理用户、配置多个执行模型
-- **多模式支持**：支持 OpenAI、Anthropic 或任何兼容接口的服务
+- **多模式支持**：支持 OpenRouter、Anthropic 或任何兼容接口的服务
 - **工具调用**：系统可以调用外部工具执行操作，用户可实时观察执行状态
 - **流式输出**：实时显示系统输出内容
 - **格式化渲染**：支持 Markdown 和代码语法高亮
@@ -234,9 +234,9 @@ npm run dev
 2. 点击左下角的 "Settings" 进入控制面板
 3. 在 "Model Configuration" 中配置执行模型：
    - **Name**：显示名称
-   - **Provider**：提供商（openai/anthropic/custom）
-   - **Model ID**：模型标识（如 gpt-4o、claude-3-5-sonnet-20241022）
-   - **API URL**：API 地址（如 https://api.openai.com/v1）
+   - **Provider**：提供商（OpenRouter/anthropic/custom）
+   - **Model ID**：模型标识（如 openai/gpt-4o、anthropic/claude-3-5-sonnet-20241022）
+   - **API URL**：API 地址（如 https://openrouter.ai/api/v1）
    - **API Key**：API 密钥
    - **Enabled**：是否启用
    - **Default**：是否为默认模型

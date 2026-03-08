@@ -128,7 +128,7 @@
           <div class="input-group">
             <label>提供商</label>
             <select v-model="modelForm.provider" class="input">
-              <option value="openai">OpenAI</option>
+              <option value="OpenRouter">OpenRouter</option>
               <option value="anthropic">Anthropic</option>
             </select>
           </div>
@@ -140,7 +140,7 @@
           
           <div class="input-group">
             <label>API URL</label>
-            <input v-model="modelForm.api_url" type="text" class="input" placeholder="https://api.openai.com/v1" required />
+            <input v-model="modelForm.api_url" type="text" class="input" placeholder="https://openrouter.ai/api/v1" required />
           </div>
           
           <div class="input-group">
@@ -222,9 +222,9 @@ const editingModel = ref(null)
 
 const modelForm = ref({
   name: '',
-  provider: 'openai',
+  provider: 'OpenRouter',
   model_id: '',
-  api_url: 'https://api.openai.com/v1',
+  api_url: 'https://openrouter.ai/api/v1',
   api_key: '',
   enabled: true,
   is_default: false,
@@ -283,9 +283,9 @@ function closeModelModal() {
   editingModel.value = null
   modelForm.value = {
     name: '',
-    provider: 'openai',
+    provider: 'OpenRouter',
     model_id: '',
-    api_url: 'https://api.openai.com/v1',
+    api_url: 'https://openrouter.ai/api/v1',
     api_key: '',
     enabled: true,
     is_default: false,
