@@ -98,10 +98,39 @@ def get_default_model() -> dict:
     return enabled[0] if enabled else None
 
 
+def ensure_default_model(models: list) -> list:
+    """Ensure there is exactly one default model among enabled models when possible."""
+    enabled_models = [m for m in models if m.get('enabled', False)]
+
+    if not enabled_models:
+        for model in models:
+            model['is_default'] = False
+        return models
+
+    default_enabled_models = [m for m in enabled_models if m.get('is_default', False)]
+
+    if not default_enabled_models:
+        enabled_models[0]['is_default'] = True
+        default_enabled_models = [enabled_models[0]]
+
+    chosen_default_id = default_enabled_models[0]['id']
+
+    for model in models:
+        model['is_default'] = model['id'] == chosen_default_id
+
+    return models
+
+
 def add_model(model_data: dict) -> dict:
     """Add a new model configuration."""
     models = load_models_config()
-    
+
+    make_default = model_data.get('is_default', False) and model_data.get('enabled', False)
+
+    if make_default:
+        for model in models:
+            model['is_default'] = False
+
     new_model = {
         "id": str(uuid.uuid4()),
         "name": model_data.get('name', 'New Model'),
@@ -110,13 +139,15 @@ def add_model(model_data: dict) -> dict:
         "api_url": model_data.get('api_url', ''),
         "api_key": model_data.get('api_key', ''),
         "enabled": model_data.get('enabled', False),
-        "is_default": False,
+        "is_default": make_default,
         "is_reasoning": model_data.get('is_reasoning', False)
     }
-    
+
     models.append(new_model)
+    models = ensure_default_model(models)
     save_models_config(models)
-    return new_model
+
+    return next((m for m in models if m['id'] == new_model['id']), new_model)
 
 
 def update_model(model_id: str, model_data: dict) -> dict:
@@ -125,8 +156,8 @@ def update_model(model_id: str, model_data: dict) -> dict:
     
     for i, model in enumerate(models):
         if model['id'] == model_id:
-            # If setting as default, unset other defaults
-            if model_data.get('is_default', False):
+            # If setting as default, unset other defaults first
+            if model_data.get('is_default', False) and model_data.get('enabled', model['enabled']):
                 for m in models:
                     m['is_default'] = False
             
@@ -137,10 +168,11 @@ def update_model(model_id: str, model_data: dict) -> dict:
                 "api_url": model_data.get('api_url', model['api_url']),
                 "api_key": model_data.get('api_key', model['api_key']),
                 "enabled": model_data.get('enabled', model['enabled']),
-                "is_default": model_data.get('is_default', model['is_default']),
+                "is_default": model_data.get('is_default', model['is_default']) and model_data.get('enabled', model['enabled']),
                 "is_reasoning": model_data.get('is_reasoning', model.get('is_reasoning', False))
             })
-            
+
+            models = ensure_default_model(models)
             save_models_config(models)
             return models[i]
     
@@ -154,6 +186,7 @@ def delete_model(model_id: str) -> bool:
     for i, model in enumerate(models):
         if model['id'] == model_id:
             models.pop(i)
+            models = ensure_default_model(models)
             save_models_config(models)
             return True
     

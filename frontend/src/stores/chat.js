@@ -10,6 +10,10 @@ export const useChatStore = defineStore('chat', () => {
   const selectedModel = ref(null)
   const isLoading = ref(false)
   const reasoningEffort = ref('auto')
+
+  function getDefaultOrFirstModel() {
+    return models.value.find(m => m.is_default) || models.value[0] || null
+  }
   
   async function loadConversations() {
     const response = await api.getConversations()
@@ -35,11 +39,15 @@ export const useChatStore = defineStore('chat', () => {
   
   async function createConversation() {
     // 使用默认模型
-    const defaultModel = models.value.find(m => m.is_default) || models.value[0]
-    const initialReasoningEffort = (defaultModel?.is_reasoning) ? 'auto' : 'auto' // 默认都是 auto，但逻辑上明确一下
+    const defaultModel = getDefaultOrFirstModel()
+    const initialReasoningEffort = 'auto'
+
+    if (!defaultModel) {
+      throw new Error('暂无可用模型，请先在管理面板配置并启用模型')
+    }
 
     const response = await api.createConversation({
-      model_id: defaultModel?.id,
+      model_id: defaultModel.id,
       reasoning_effort: initialReasoningEffort
     })
     conversations.value.unshift(response.conversation)
@@ -49,6 +57,31 @@ export const useChatStore = defineStore('chat', () => {
     // 设置当前选择为新对话的配置
     if (defaultModel) {
       selectedModel.value = defaultModel
+    }
+    reasoningEffort.value = initialReasoningEffort
+    
+    return response.conversation
+  }
+  
+  // 使用指定模型创建对话（用于起始页发送首条消息时）
+  async function createConversationWithModel(modelId, reasoning) {
+    const model = models.value.find(m => m.id === modelId) || getDefaultOrFirstModel()
+    const initialReasoningEffort = reasoning || 'auto'
+
+    if (!model) {
+      throw new Error('暂无可用模型，请先在管理面板配置并启用模型')
+    }
+
+    const response = await api.createConversation({
+      model_id: model.id,
+      reasoning_effort: initialReasoningEffort
+    })
+    conversations.value.unshift(response.conversation)
+    currentConversation.value = response.conversation
+    messages.value = []
+    
+    if (model) {
+      selectedModel.value = model
     }
     reasoningEffort.value = initialReasoningEffort
     
@@ -68,9 +101,15 @@ export const useChatStore = defineStore('chat', () => {
   async function loadModels() {
     const response = await api.getModels()
     models.value = response.models
-    
-    if (models.value.length > 0 && !selectedModel.value) {
-      selectedModel.value = models.value.find(m => m.is_default) || models.value[0]
+
+    const nextSelectedModel = selectedModel.value
+      ? models.value.find(m => m.id === selectedModel.value.id)
+      : null
+
+    selectedModel.value = nextSelectedModel || getDefaultOrFirstModel()
+
+    if (!selectedModel.value || !selectedModel.value.is_reasoning) {
+      reasoningEffort.value = 'auto'
     }
   }
   
@@ -132,6 +171,7 @@ export const useChatStore = defineStore('chat', () => {
     loadConversations,
     loadConversation,
     createConversation,
+    createConversationWithModel,
     deleteConversation,
     loadModels,
     addMessage,

@@ -3,7 +3,7 @@
     <aside class="sidebar">
       <div class="sidebar-header">
         <h2>Dummy System</h2>
-        <button @click="createNewChat" class="btn btn-primary btn-sm">
+        <button @click="goToHome" class="btn btn-primary btn-sm">
           <span>+</span> 新对话
         </button>
       </div>
@@ -29,7 +29,7 @@
         
         <div v-if="chatStore.conversations.length === 0" class="empty-state">
           <p>暂无对话</p>
-          <p class="text-muted">开始新对话</p>
+          <p class="text-muted">输入消息开始新对话</p>
         </div>
       </div>
       
@@ -50,14 +50,101 @@
     </aside>
     
     <main class="chat-main">
+      <!-- 起始页 -->
       <div v-if="!currentConversationId" class="welcome-screen">
-        <h1>欢迎使用 Dummy System</h1>
-        <p>开始与 AI 助手对话</p>
-        <button @click="createNewChat" class="btn btn-primary btn-lg">
-          开始新对话
-        </button>
+        <div class="welcome-content">
+          <h1 class="welcome-title">
+            <span class="greeting">{{ authStore.user?.username }}，你好</span>
+          </h1>
+          <p class="welcome-subtitle">需要我为你做些什么？</p>
+        </div>
+        
+        <!-- 起始页的模型选择和输入区域 -->
+        <div class="welcome-input-section">
+          <div 
+            v-if="isModelDropdownOpen || isReasoningDropdownOpen" 
+            class="dropdown-overlay" 
+            @click="closeAllDropdowns"
+          ></div>
+          
+          <div class="welcome-controls">
+            <div class="custom-dropdown">
+              <button 
+                class="dropdown-trigger" 
+                :class="{ active: isModelDropdownOpen }"
+                @click="toggleModelDropdown"
+              >
+                <span class="dropdown-label">模型：</span>
+                <span class="model-name">{{ currentModelName }}</span>
+                <span class="chevron">▼</span>
+              </button>
+              
+              <transition name="dropdown-fade">
+                <div v-show="isModelDropdownOpen" class="dropdown-menu model-menu welcome-dropdown">
+                  <div class="dropdown-header">选择大模型</div>
+                  <div 
+                    v-for="model in chatStore.models" 
+                    :key="model.id"
+                    class="dropdown-item"
+                    :class="{ selected: selectedModelId === model.id }"
+                    @click="selectModel(model.id)"
+                  >
+                    <span class="item-title">{{ model.name }}</span>
+                    <span v-if="selectedModelId === model.id" class="check-icon">✓</span>
+                  </div>
+                </div>
+              </transition>
+            </div>
+
+            <div v-if="showReasoningSelector" class="custom-dropdown">
+              <button 
+                class="dropdown-trigger reasoning-trigger" 
+                :class="{ active: isReasoningDropdownOpen }"
+                @click="toggleReasoningDropdown"
+              >
+                <span class="dropdown-label">思考强度：</span>
+                <span class="reasoning-label">{{ currentReasoningLabel }}</span>
+                <span class="chevron">▼</span>
+              </button>
+              
+              <transition name="dropdown-fade">
+                <div v-show="isReasoningDropdownOpen" class="dropdown-menu reasoning-menu welcome-dropdown">
+                  <div class="dropdown-header">思考强度</div>
+                  <div 
+                    v-for="option in reasoningOptions" 
+                    :key="option.value"
+                    class="dropdown-item"
+                    :class="{ selected: chatStore.reasoningEffort === option.value }"
+                    @click="selectReasoning(option.value)"
+                  >
+                    <span class="item-title">{{ option.label }}</span>
+                    <span v-if="chatStore.reasoningEffort === option.value" class="check-icon">✓</span>
+                  </div>
+                </div>
+              </transition>
+            </div>
+          </div>
+          
+          <form @submit.prevent="sendFirstMessage" class="welcome-input-form">
+            <textarea
+              v-model="inputMessage"
+              class="input welcome-input"
+              placeholder="在此处输入消息开始新对话..."
+              @keydown.enter.exact.prevent="sendFirstMessage"
+              rows="1"
+            ></textarea>
+            <button 
+              type="submit" 
+              class="btn btn-primary send-btn"
+              :disabled="!canSendFirstMessage"
+            >
+              发送
+            </button>
+          </form>
+        </div>
       </div>
       
+      <!-- 对话页 -->
       <template v-else>
         <header class="chat-header">
           <h3>{{ chatStore.currentConversation?.title || '新对话' }}</h3>
@@ -227,16 +314,26 @@ const reasoningOptions = [
   { value: 'medium', label: '中' },
   { value: 'high', label: '高' }
 ]
-const showReasoningSelector = computed(() => chatStore.selectedModel?.is_reasoning)
+const showReasoningSelector = computed(() => {
+  const model = chatStore.models.find(m => m.id === selectedModelId.value)
+  return model?.is_reasoning
+})
 
 const currentModelName = computed(() => {
   const model = chatStore.models.find(m => m.id === selectedModelId.value)
-  return model ? model.name : '选择模型'
+  if (model) {
+    return model.name
+  }
+  return chatStore.models.length > 0 ? '选择模型' : '暂无可用模型'
 })
 
 const currentReasoningLabel = computed(() => {
   const opt = reasoningOptions.find(o => o.value === chatStore.reasoningEffort)
   return opt ? opt.label : '自动'
+})
+
+const canSendFirstMessage = computed(() => {
+  return Boolean(inputMessage.value.trim() && selectedModelId.value)
 })
 
 // Configure marked
@@ -298,14 +395,70 @@ function selectReasoning(value) {
   closeAllDropdowns()
 }
 
-async function createNewChat() {
-  const conv = await chatStore.createConversation()
-  currentConversationId.value = conv.id
-  // 同步更新本地的 selectedModelId 为新对话的模型
-  if (chatStore.selectedModel) {
-    selectedModelId.value = chatStore.selectedModel.id
+function syncHomeModelSelection() {
+  const defaultModel = chatStore.models.find(m => m.is_default) || chatStore.models[0] || null
+
+  if (defaultModel) {
+    selectedModelId.value = defaultModel.id
+    chatStore.setSelectedModel(defaultModel)
+  } else {
+    selectedModelId.value = null
   }
+
+  if (!defaultModel || !defaultModel.is_reasoning) {
+    chatStore.resetReasoningEffort()
+  }
+}
+
+// 回到起始页
+function goToHome() {
+  if (currentConversationId.value) {
+    socketService.leaveConversation(currentConversationId.value)
+  }
+  currentConversationId.value = null
+  chatStore.clearCurrent()
+  syncHomeModelSelection()
+}
+
+// 从起始页发送第一条消息（创建对话并发送）
+async function sendFirstMessage() {
+  if (!inputMessage.value.trim()) return
+  if (!selectedModelId.value) {
+    alert('暂无可用模型，请先在管理面板配置并启用模型')
+    return
+  }
+  
+  const message = inputMessage.value.trim()
+  inputMessage.value = ''
+  
+  // 先创建对话
+  const conv = await chatStore.createConversationWithModel(selectedModelId.value, chatStore.reasoningEffort)
+  currentConversationId.value = conv.id
   socketService.joinConversation(conv.id)
+  
+  // 添加用户消息占位
+  const clientId = `pending-${Date.now()}`
+  const placeholder = {
+    id: clientId,
+    _clientId: clientId,
+    conversation_id: conv.id,
+    role: 'user',
+    content: message,
+    created_at: new Date().toISOString(),
+    pending: true
+  }
+  chatStore.addMessage(placeholder)
+  
+  await nextTick()
+  scrollToBottom()
+  
+  // 发送消息
+  socketService.sendMessage(
+    conv.id,
+    message,
+    selectedModelId.value,
+    chatStore.reasoningEffort
+  )
 }
 
 async function selectConversation(conversationId) {
@@ -315,13 +468,31 @@ async function selectConversation(conversationId) {
   
   currentConversationId.value = conversationId
   await chatStore.loadConversation(conversationId)
+  
+  // 同步模型选择
+  if (chatStore.selectedModel) {
+    selectedModelId.value = chatStore.selectedModel.id
+  }
+  
   socketService.joinConversation(conversationId)
   scrollToBottom()
 }
 
 async function deleteConversation(conversationId) {
   if (confirm('确定要删除这个对话吗？')) {
+    const wasCurrentConversation = currentConversationId.value === conversationId
+    
+    if (wasCurrentConversation) {
+      socketService.leaveConversation(conversationId)
+    }
+    
     await chatStore.deleteConversation(conversationId)
+    
+    // 如果删除的是当前对话，回到起始页
+    if (wasCurrentConversation) {
+      currentConversationId.value = null
+      syncHomeModelSelection()
+    }
   }
 }
 
@@ -331,7 +502,6 @@ function sendMessage() {
   const message = inputMessage.value.trim()
   inputMessage.value = ''
   
-  // 注入 _clientId，用于防闪烁的节点复用
   const clientId = `pending-${Date.now()}`
   const placeholder = {
     id: clientId,
@@ -353,12 +523,12 @@ function sendMessage() {
   )
 }
 
-  function handleModelChange() {
-    const model = chatStore.models.find(m => m.id === selectedModelId.value)
-    if (model && !model.is_reasoning) {
-      chatStore.resetReasoningEffort()
-    }
+function handleModelChange() {
+  const model = chatStore.models.find(m => m.id === selectedModelId.value)
+  if (model && !model.is_reasoning) {
+    chatStore.resetReasoningEffort()
   }
+}
 
 function handleLogout() {
   socketService.disconnect()
@@ -370,8 +540,8 @@ function handleLogout() {
 function onAuthenticated() {
   chatStore.loadConversations()
   chatStore.loadModels().then(() => {
-    if (chatStore.selectedModel) {
-      selectedModelId.value = chatStore.selectedModel.id
+    if (!currentConversationId.value) {
+      syncHomeModelSelection()
     }
   })
 }
@@ -381,7 +551,6 @@ function onMessageSaved(data) {
     (msg) => msg.pending && msg.role === 'user' && msg.content === data.message.content
   )
   if (existingIndex !== -1) {
-    // 继承 _clientId 并用 splice 原地替换，保证 Vue v-for 的 :key 绝对一致，杜绝动画闪烁
     const oldMsg = chatStore.messages[existingIndex]
     const updatedMessage = { ...data.message, _clientId: oldMsg._clientId || oldMsg.id }
     chatStore.messages.splice(existingIndex, 1, updatedMessage)
@@ -400,7 +569,6 @@ function onStreamStart() {
   streamingContent.value = ''
   activeToolCalls.value = []
   
-  // 使用 requestAnimationFrame 确保 Vue 将节点渲染到 DOM 后再滚动，避免闪烁
   requestAnimationFrame(() => {
     scrollToBottom()
   })
@@ -450,6 +618,17 @@ function onToolCallEnd(data) {
   scrollToBottom()
 }
 
+async function initializeChatView() {
+  await Promise.all([
+    chatStore.loadConversations(),
+    chatStore.loadModels()
+  ])
+
+  if (!currentConversationId.value) {
+    syncHomeModelSelection()
+  }
+}
+
 onMounted(() => {
   socketService.connect()
   
@@ -463,6 +642,8 @@ onMounted(() => {
   socketService.on('tool_call_start', onToolCallStart)
   socketService.on('tool_call_args', onToolCallArgs)
   socketService.on('tool_call_end', onToolCallEnd)
+
+  initializeChatView()
 })
 
 onUnmounted(() => {
@@ -621,27 +802,101 @@ watch(() => chatStore.selectedModel, (model) => {
   overflow: hidden;
 }
 
+// Welcome Screen (Gemini Style)
 .welcome-screen {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
   padding: 2rem;
-  
-  h1 {
-    font-size: 2rem;
-    margin-bottom: 0.5rem;
+  gap: 2rem;
+}
+
+.welcome-content {
+  text-align: center;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
   }
-  
-  p {
-    color: var(--text-secondary);
-    margin-bottom: 2rem;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-/* ================= 优化后的 Header 与重绘下拉框样式 ================= */
+.welcome-title {
+  font-size: 2.5rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  background: linear-gradient(135deg, var(--primary-color) 0%, #8b5cf6 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.welcome-subtitle {
+  font-size: 1.25rem;
+  color: var(--text-secondary);
+}
+
+.welcome-input-section {
+  width: 100%;
+  max-width: 700px;
+  animation: fadeInUp 0.6s ease-out 0.1s both;
+}
+
+.welcome-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  position: relative;
+}
+
+.welcome-dropdown {
+  bottom: auto;
+  top: calc(100% + 0.5rem);
+}
+
+.welcome-input-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  background: var(--bg-primary);
+  padding: 1rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border-color);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  
+  &:focus-within {
+    box-shadow: 0 4px 25px rgba(99, 102, 241, 0.15);
+    border-color: var(--primary-color);
+  }
+}
+
+.welcome-input {
+  flex: 1;
+  resize: none;
+  min-height: 48px;
+  max-height: 200px;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  
+  &:focus {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
+/* ================= Header 与下拉框样式 ================= */
 .chat-header {
   position: relative;
   padding: 1rem 1.5rem;
@@ -770,7 +1025,7 @@ watch(() => chatStore.selectedModel, (model) => {
   }
 }
 
-/* 下拉框出场/离场高级动画 */
+/* 下拉框动画 */
 .dropdown-fade-enter-active,
 .dropdown-fade-leave-active {
   transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -960,14 +1215,13 @@ watch(() => chatStore.selectedModel, (model) => {
   min-width: 80px;
 }
 
-/* ================= 消息体和列表过渡动画优化 ================= */
+/* ================= 消息体和列表过渡动画 ================= */
 
 .message-enter-active {
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 .message-leave-active {
   transition: all 0.3s ease;
-  /* 加上绝对定位，避免离开时的 DOM 节点把其他节点往下挤压 */
   position: absolute; 
   width: calc(100% - 3rem); 
 }
@@ -993,7 +1247,7 @@ watch(() => chatStore.selectedModel, (model) => {
   position: absolute;
 }
 
-/* 优化光标跳动 */
+/* 光标跳动 */
 .typing-indicator {
   display: inline-block;
   width: 8px;
