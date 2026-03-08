@@ -240,8 +240,18 @@
             <div v-if="isStreaming" key="streaming-msg" class="message assistant streaming-message">
               <div class="message-avatar">🤖</div>
               <div class="message-content">
-                <div v-html="renderMarkdown(streamingContent)"></div>
+                <!-- 思考状态提示 -->
+                <div v-if="!streamingContent && activeToolCalls.length === 0" class="thinking-indicator">
+                  <span class="thinking-dots">
+                    <span></span><span></span><span></span>
+                  </span>
+                  <span class="thinking-text">正在思考...</span>
+                </div>
                 
+                <!-- 流式内容 -->
+                <div v-if="streamingContent" v-html="renderMarkdown(streamingContent)"></div>
+                
+                <!-- 工具调用 -->
                 <div v-if="activeToolCalls.length" class="tool-calls active">
                   <div v-for="tc in activeToolCalls" :key="tc.id" class="tool-call">
                     <span class="tool-icon spinning">⚙️</span>
@@ -252,28 +262,38 @@
                   </div>
                 </div>
                 
-                <span class="typing-indicator">▊</span>
+                <!-- 光标 -->
+                <span v-if="streamingContent" class="typing-indicator">▊</span>
               </div>
             </div>
           </TransitionGroup>
         </div>
         
         <div class="input-area">
-          <form @submit.prevent="sendMessage" class="input-form">
+          <form @submit.prevent="handleSubmit" class="input-form">
             <textarea
               v-model="inputMessage"
               class="input message-input"
               placeholder="在此处输入消息。回车键发送；Shift+回车键换行。"
-              @keydown.enter.exact.prevent="sendMessage"
+              @keydown.enter.exact.prevent="handleSubmit"
               :disabled="isStreaming"
               rows="1"
             ></textarea>
             <button 
+              v-if="isStreaming"
+              type="button" 
+              class="btn btn-danger send-btn"
+              @click="handleStop"
+            >
+              停止
+            </button>
+            <button 
+              v-else
               type="submit" 
               class="btn btn-primary send-btn"
-              :disabled="!inputMessage.trim() || isStreaming"
+              :disabled="!inputMessage.trim()"
             >
-              {{ isStreaming ? '停止' : '发送' }}
+              发送
             </button>
           </form>
         </div>
@@ -417,6 +437,7 @@ function goToHome() {
   }
   currentConversationId.value = null
   chatStore.clearCurrent()
+  resetStreamingState()
   syncHomeModelSelection()
 }
 
@@ -465,6 +486,9 @@ async function selectConversation(conversationId) {
   if (currentConversationId.value) {
     socketService.leaveConversation(currentConversationId.value)
   }
+  
+  // 重置流式状态
+  resetStreamingState()
   
   currentConversationId.value = conversationId
   await chatStore.loadConversation(conversationId)
@@ -521,6 +545,25 @@ function sendMessage() {
     selectedModelId.value,
     chatStore.reasoningEffort
   )
+}
+
+function handleSubmit() {
+  if (isStreaming.value) {
+    handleStop()
+  } else {
+    sendMessage()
+  }
+}
+
+function handleStop() {
+  socketService.stopGeneration()
+  resetStreamingState()
+}
+
+function resetStreamingState() {
+  isStreaming.value = false
+  streamingContent.value = ''
+  activeToolCalls.value = []
 }
 
 function handleModelChange() {
@@ -1266,5 +1309,51 @@ watch(() => chatStore.selectedModel, (model) => {
 .streaming-message .message-content {
   min-height: 48px;
   transition: height 0.2s ease;
+}
+
+/* 思考指示器 */
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+}
+
+.thinking-text {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.thinking-dots {
+  display: flex;
+  gap: 4px;
+  
+  span {
+    width: 8px;
+    height: 8px;
+    background-color: var(--primary-color);
+    border-radius: 50%;
+    animation: bounce 1.4s ease-in-out infinite both;
+    
+    &:nth-child(1) { animation-delay: -0.32s; }
+    &:nth-child(2) { animation-delay: -0.16s; }
+    &:nth-child(3) { animation-delay: 0s; }
+  }
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>

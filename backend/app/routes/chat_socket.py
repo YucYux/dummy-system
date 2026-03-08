@@ -18,6 +18,12 @@ from app.services.llm_service import LLMService
 user_sessions = {}
 
 
+def emit_and_flush(event, data, **kwargs):
+    """Emit a socket event and yield control to allow it to be sent immediately."""
+    emit(event, data, **kwargs)
+    socketio.sleep(0)
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection."""
@@ -132,22 +138,22 @@ def handle_send_message(data):
     assistant_content = ""
     tool_calls_data = []
     
-    emit('stream_start', {})
+    emit_and_flush('stream_start', {})
     
     try:
         for event in llm_service.chat_with_tools(llm_messages, reasoning_effort=reasoning_effort):
             if event['type'] == 'content':
                 assistant_content += event['content']
-                emit('stream_content', {'content': event['content']})
+                emit_and_flush('stream_content', {'content': event['content']})
             
             elif event['type'] == 'tool_call_start':
-                emit('tool_call_start', {
+                emit_and_flush('tool_call_start', {
                     'id': event['id'],
                     'tool': event['tool']
                 })
             
             elif event['type'] == 'tool_call_args':
-                emit('tool_call_args', {
+                emit_and_flush('tool_call_args', {
                     'id': event['id'],
                     'args': event['args']
                 })
@@ -161,7 +167,7 @@ def handle_send_message(data):
                         'arguments': json.dumps(event.get('arguments', {}))
                     }
                 })
-                emit('tool_call_end', {
+                emit_and_flush('tool_call_end', {
                     'id': event['id'],
                     'tool': event['tool'],
                     'result': event.get('result'),
