@@ -88,6 +88,17 @@ const api = {
     return response.data
   },
   
+  // Message operations
+  async regenerateMessage(conversationId, messageId) {
+    const response = await client.post(`/chat/conversations/${conversationId}/messages/${messageId}/regenerate`)
+    return response.data
+  },
+  
+  async revertToMessage(conversationId, messageId) {
+    const response = await client.post(`/chat/conversations/${conversationId}/messages/${messageId}/revert`)
+    return response.data
+  },
+  
   // Admin - Users
   async getUsers() {
     const response = await client.get('/admin/users')

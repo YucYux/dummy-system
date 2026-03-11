@@ -3,6 +3,7 @@ WebSocket handlers for real-time chat.
 """
 
 import json
+import threading
 from flask import request
 from flask_socketio import emit, join_room, leave_room
 from app import socketio
@@ -16,6 +17,9 @@ from app.services.llm_service import LLMService
 
 # Store user sessions
 user_sessions = {}
+
+# Store active generation tasks: {sid: {'stop_flag': threading.Event(), 'conversation_id': str}}
+active_generations = {}
 
 
 def emit_and_flush(event, data, **kwargs):
@@ -34,6 +38,13 @@ def handle_connect():
 def handle_disconnect():
     """Handle client disconnection."""
     print(f"Client disconnected: {request.sid}")
+    
+    # Stop any active generation for this client
+    if request.sid in active_generations:
+        active_generations[request.sid]['stop_flag'].set()
+        del active_generations[request.sid]
+        print(f"Stopped active generation for disconnected client: {request.sid}")
+    
     if request.sid in user_sessions:
         del user_sessions[request.sid]
 
@@ -95,11 +106,13 @@ def handle_send_message(data):
     
     session = user_sessions[request.sid]
     user_id = session['user_id']
+    sid = request.sid
     
     conversation_id = data.get('conversation_id')
     content = data.get('content')
     model_id = data.get('model_id')
     reasoning_effort = data.get('reasoning_effort') or 'auto'
+    is_regenerate = data.get('is_regenerate', False)
     
     if not conversation_id or not content:
         emit('error', {'error': '缺少对话ID或内容'})
@@ -111,16 +124,17 @@ def handle_send_message(data):
         emit('error', {'error': '对话不存在'})
         return
     
-    # Save user message
-    user_msg = add_message(user_id, conversation_id, 'user', content)
-    emit('message_saved', {'message': user_msg})
-    
-    # Update conversation title if it's the first message
-    messages = get_messages_for_llm(user_id, conversation_id)
-    if len(messages) == 1:
-        title = content[:50] + '...' if len(content) > 50 else content
-        update_conversation(user_id, conversation_id, title=title)
-        emit('conversation_updated', {'title': title})
+    # Only save user message if this is not a regeneration
+    if not is_regenerate:
+        user_msg = add_message(user_id, conversation_id, 'user', content)
+        emit('message_saved', {'message': user_msg})
+        
+        # Update conversation title if it's the first message
+        messages = get_messages_for_llm(user_id, conversation_id)
+        if len(messages) == 1:
+            title = content[:50] + '...' if len(content) > 50 else content
+            update_conversation(user_id, conversation_id, title=title)
+            emit('conversation_updated', {'title': title})
     
     # Use model from conversation or request
     use_model_id = model_id or conversation.get('model_id')
@@ -128,21 +142,34 @@ def handle_send_message(data):
     try:
         llm_service = LLMService(use_model_id)
     except ValueError as e:
-        emit('error', {'error': str(e)})
+        emit('stream_error', {'error': str(e)})
         return
     
     # Prepare messages for LLM
     llm_messages = get_messages_for_llm(user_id, conversation_id)
     
+    # Create stop flag for this generation
+    stop_flag = threading.Event()
+    active_generations[sid] = {
+        'stop_flag': stop_flag,
+        'conversation_id': conversation_id
+    }
+    
     # Stream response
     assistant_content = ""
     tool_calls_data = []
     parts_data = []
+    generation_stopped = False
     
     emit_and_flush('stream_start', {})
     
     try:
-        for event in llm_service.chat_with_tools(llm_messages, reasoning_effort=reasoning_effort):
+        for event in llm_service.chat_with_tools(llm_messages, reasoning_effort=reasoning_effort, stop_flag=stop_flag):
+            # Check if generation should be stopped
+            if stop_flag.is_set():
+                generation_stopped = True
+                break
+            
             if event['type'] == 'content':
                 assistant_content += event['content']
                 emit_and_flush('stream_content', {'content': event['content']})
@@ -190,25 +217,44 @@ def handle_send_message(data):
             
             elif event['type'] == 'error':
                 emit('stream_error', {'error': event['message']})
+                # Clean up active generation
+                if sid in active_generations:
+                    del active_generations[sid]
                 return
         
-        # Save assistant message with parts
-        assistant_msg = add_message(
-            user_id, 
-            conversation_id, 
-            'assistant', 
-            assistant_content,
-            tool_calls=tool_calls_data if tool_calls_data else None,
-            parts=parts_data if parts_data else None
-        )
-        
-        emit('stream_end', {'message': assistant_msg})
+        # Only save message if generation completed successfully
+        if not generation_stopped and assistant_content:
+            # Save assistant message with parts
+            assistant_msg = add_message(
+                user_id, 
+                conversation_id, 
+                'assistant', 
+                assistant_content,
+                tool_calls=tool_calls_data if tool_calls_data else None,
+                parts=parts_data if parts_data else None
+            )
+            
+            emit('stream_end', {'message': assistant_msg})
+        elif generation_stopped:
+            # Notify client that generation was stopped
+            emit('stream_error', {'error': '生成已停止', 'stopped': True})
         
     except Exception as e:
         emit('stream_error', {'error': str(e)})
+    finally:
+        # Clean up active generation
+        if sid in active_generations:
+            del active_generations[sid]
 
 
 @socketio.on('stop_generation')
 def handle_stop_generation(data):
-    """Handle request to stop generation (placeholder for future implementation)."""
-    emit('generation_stopped', {})
+    """Handle request to stop generation."""
+    sid = request.sid
+    
+    if sid in active_generations:
+        active_generations[sid]['stop_flag'].set()
+        print(f"Stop signal sent for generation: {sid}")
+        emit('generation_stopped', {})
+    else:
+        emit('generation_stopped', {'message': '没有正在进行的生成'})

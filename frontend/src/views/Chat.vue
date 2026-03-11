@@ -215,68 +215,99 @@
         </header>
         
         <div class="messages-container" ref="messagesContainer">
-          <TransitionGroup name="message" tag="div" class="message-list-wrapper">
-            <div 
-              v-for="message in chatStore.messages" 
-              :key="message._clientId || message.id"
-              :class="['message', message.role]"
-            >
-              <div class="message-avatar">
-                {{ message.role === 'user' ? '👤' : '🤖' }}
-              </div>
-              <div class="message-content">
+          <div class="messages-center-wrapper">
+            <TransitionGroup name="message" tag="div" class="message-list-wrapper">
+              <div 
+                v-for="message in chatStore.messages" 
+                :key="message._clientId || message.id"
+                :class="['message', message.role]"
+                @mouseenter="hoveredMessageId = message.id"
+                @mouseleave="hoveredMessageId = null"
+              >
                 <!-- 用户消息 -->
-                <div v-if="message.role === 'user'">{{ message.content }}</div>
+                <template v-if="message.role === 'user'">
+                  <div class="user-message-wrapper">
+                    <div class="message-bubble">{{ message.content }}</div>
+                    <div class="user-message-actions" :class="{ visible: hoveredMessageId === message.id }">
+                      <button class="action-btn" @click="copyMessageContent(message.content)" title="复制">
+                        <img :src="iconCopy" class="action-icon-img" alt="" />
+                      </button>
+                      <button 
+                        v-if="isLatestUserMessage(message.id)"
+                        class="action-btn" 
+                        @click="handleRevertToMessage(message)"
+                        title="返回"
+                      >
+                        <img :src="iconReturn" class="action-icon-img" alt="" />
+                      </button>
+                    </div>
+                  </div>
+                </template>
                 
                 <!-- 助手消息：按顺序渲染 parts -->
                 <template v-else-if="message.role === 'assistant'">
-                  <template v-for="(part, idx) in getMessageParts(message)" :key="idx">
-                    <div v-if="part.type === 'content'" v-html="renderMarkdown(part.text)"></div>
-                    <div v-else-if="part.type === 'tool_call'" class="tool-calls completed">
-                      <div class="tool-call" :class="{ collapsed: part.collapsed }" @click="part.collapsed = !part.collapsed">
-                        <span class="tool-icon">✓</span>
-                        <span class="tool-name">已调用: {{ part.name }}</span>
-                        <span class="collapse-hint">{{ part.collapsed ? '展开' : '收起' }}</span>
+                  <div class="assistant-message-content">
+                    <template v-for="(part, idx) in getMessageParts(message)" :key="idx">
+                      <div v-if="part.type === 'content'" v-html="renderMarkdown(part.text)"></div>
+                      <div v-else-if="part.type === 'tool_call'" class="tool-calls completed">
+                        <div class="tool-call" :class="{ collapsed: part.collapsed }" @click="part.collapsed = !part.collapsed">
+                          <span class="tool-icon">✓</span>
+                          <span class="tool-name">已调用: {{ part.name }}</span>
+                          <span class="collapse-hint">{{ part.collapsed ? '展开' : '收起' }}</span>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="assistant-message-actions" :class="{ visible: hoveredMessageId === message.id }">
+                    <button class="action-btn" @click="copyMessageMarkdown(message)" title="复制">
+                      <img :src="iconCopy" class="action-icon-img" alt="" />
+                    </button>
+                    <button 
+                      v-if="isLatestAssistantMessage(message.id)"
+                      class="action-btn" 
+                      @click="handleRegenerate(message.id)"
+                      :disabled="isStreaming"
+                      title="重新生成"
+                    >
+                      <img :src="iconRedo" class="action-icon-img" alt="" />
+                    </button>
+                  </div>
+                </template>
+              </div>
+              
+              <div v-if="isStreaming" :key="streamingMessageId" class="message assistant streaming-message">
+                <div class="assistant-message-content">
+                  <!-- 思考状态提示 -->
+                  <div v-if="streamingParts.length === 0" class="thinking-indicator">
+                    <span class="thinking-dots">
+                      <span></span><span></span><span></span>
+                    </span>
+                    <span class="thinking-text">正在思考...</span>
+                  </div>
+                  
+                  <!-- 按时间顺序渲染内容和工具调用 -->
+                  <template v-for="(part, index) in streamingParts" :key="index">
+                    <!-- 文字内容 -->
+                    <div v-if="part.type === 'content'" class="streaming-text-part">
+                      <div v-html="renderMarkdown(part.text)"></div>
+                    </div>
+                    
+                    <!-- 工具调用 -->
+                    <div v-else-if="part.type === 'tool_call'" class="tool-calls" :class="{ active: !part.toolCall.result, completed: part.toolCall.result }">
+                      <div class="tool-call">
+                        <span v-if="!part.toolCall.result" class="tool-icon spinning">⚙️</span>
+                        <span v-else class="tool-icon">✓</span>
+                        <span class="tool-name">{{ part.toolCall.result ? '已调用' : '正在调用' }}: {{ part.toolCall.name }}</span>
                       </div>
                     </div>
                   </template>
-                </template>
-              </div>
-            </div>
-            
-            <div v-if="isStreaming" :key="streamingMessageId" class="message assistant streaming-message">
-              <div class="message-avatar">🤖</div>
-              <div class="message-content">
-                <!-- 思考状态提示 -->
-                <div v-if="streamingParts.length === 0" class="thinking-indicator">
-                  <span class="thinking-dots">
-                    <span></span><span></span><span></span>
-                  </span>
-                  <span class="thinking-text">正在思考...</span>
-                </div>
-                
-                <!-- 按时间顺序渲染内容和工具调用 -->
-                <template v-for="(part, index) in streamingParts" :key="index">
-                  <!-- 文字内容 -->
-                  <div v-if="part.type === 'content'" class="streaming-text-part">
-                    <div v-html="renderMarkdown(part.text)"></div>
-                  </div>
                   
-                  <!-- 工具调用 -->
-                  <div v-else-if="part.type === 'tool_call'" class="tool-calls" :class="{ active: !part.toolCall.result, completed: part.toolCall.result }">
-                    <div class="tool-call">
-                      <span v-if="!part.toolCall.result" class="tool-icon spinning">⚙️</span>
-                      <span v-else class="tool-icon">✓</span>
-                      <span class="tool-name">{{ part.toolCall.result ? '已调用' : '正在调用' }}: {{ part.toolCall.name }}</span>
-                    </div>
-                  </div>
-                </template>
-                
-                <!-- 流式光标 -->
-                <span v-if="streamingParts.length > 0" class="typing-cursor"></span>
+                  <!-- 流式光标 -->
+                  <span v-if="streamingParts.length > 0" class="typing-cursor"></span>
+                </div>
               </div>
-            </div>
-          </TransitionGroup>
+            </TransitionGroup>
+          </div>
         </div>
         
         <div class="input-area">
@@ -317,10 +348,14 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
+import api from '@/api'
 import socketService from '@/api/socket'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js'
+import iconCopy from '../../assets/copy.svg'
+import iconRedo from '../../assets/redo.svg'
+import iconReturn from '../../assets/return.svg'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -334,6 +369,7 @@ const streamingParts = ref([])
 const streamingMessageId = ref(null)
 const messagesContainer = ref(null)
 const currentConversationId = ref(null)
+const hoveredMessageId = ref(null)
 
 // Custom Dropdown States
 const selectedModelId = ref(null)
@@ -613,6 +649,115 @@ function handleModelChange() {
   }
 }
 
+// 检查是否是最新的用户消息
+function isLatestUserMessage(messageId) {
+  const userMessages = chatStore.messages.filter(m => m.role === 'user')
+  if (userMessages.length === 0) return false
+  return userMessages[userMessages.length - 1].id === messageId
+}
+
+// 检查是否是最新的助手消息（仅最新一条允许重新生成）
+function isLatestAssistantMessage(messageId) {
+  const assistantMessages = chatStore.messages.filter(m => m.role === 'assistant')
+  if (assistantMessages.length === 0) return false
+  return assistantMessages[assistantMessages.length - 1].id === messageId
+}
+
+// 复制消息内容（纯文本）
+async function copyMessageContent(content) {
+  try {
+    await navigator.clipboard.writeText(content)
+    showToast('已复制到剪贴板')
+  } catch (err) {
+    console.error('复制失败:', err)
+    showToast('复制失败')
+  }
+}
+
+// 复制助手消息（保留markdown格式）
+async function copyMessageMarkdown(message) {
+  try {
+    const content = message.content || ''
+    await navigator.clipboard.writeText(content)
+    showToast('已复制到剪贴板')
+  } catch (err) {
+    console.error('复制失败:', err)
+    showToast('复制失败')
+  }
+}
+
+// 简单的提示函数
+function showToast(message) {
+  const toast = document.createElement('div')
+  toast.className = 'toast-notification'
+  toast.textContent = message
+  document.body.appendChild(toast)
+  setTimeout(() => {
+    toast.classList.add('fade-out')
+    setTimeout(() => toast.remove(), 300)
+  }, 2000)
+}
+
+// 重新生成消息
+async function handleRegenerate(messageId) {
+  if (isStreaming.value) return
+  
+  try {
+    // 调用后端API删除该消息
+    const response = await api.regenerateMessage(currentConversationId.value, messageId)
+    
+    if (response.success) {
+      // 从本地状态中移除该助手消息
+      const msgIndex = chatStore.messages.findIndex(m => m.id === messageId)
+      if (msgIndex !== -1) {
+        chatStore.messages.splice(msgIndex, 1)
+      }
+      
+      // 获取最后一条用户消息内容
+      const lastUserMessage = chatStore.messages.filter(m => m.role === 'user').pop()
+      if (lastUserMessage) {
+        // 发送重新生成请求（标记为regenerate，后端不会再次保存用户消息）
+        socketService.sendMessage(
+          currentConversationId.value,
+          lastUserMessage.content,
+          selectedModelId.value,
+          chatStore.reasoningEffort,
+          true  // isRegenerate = true
+        )
+      }
+    }
+  } catch (err) {
+    console.error('重新生成失败:', err)
+    showToast('重新生成失败: ' + (err.message || '未知错误'))
+  }
+}
+
+// 返回到指定用户消息状态
+async function handleRevertToMessage(message) {
+  if (!confirm('确定要返回到这条消息发送之前的状态吗？该消息及其后的所有回复都将被删除。')) {
+    return
+  }
+  
+  try {
+    // 调用后端API删除该消息及其后续所有消息
+    const response = await api.revertToMessage(currentConversationId.value, message.id)
+    
+    if (response.success) {
+      // 将消息内容填充到输入框
+      inputMessage.value = message.content
+      
+      // 从本地状态中移除该消息及其后续所有消息
+      const msgIndex = chatStore.messages.findIndex(m => m.id === message.id)
+      if (msgIndex !== -1) {
+        chatStore.messages.splice(msgIndex)
+      }
+    }
+  } catch (err) {
+    console.error('返回失败:', err)
+    alert('返回失败: ' + (err.message || '未知错误'))
+  }
+}
+
 function handleLogout() {
   socketService.disconnect()
   authStore.logout()
@@ -696,8 +841,16 @@ function onStreamEnd(data) {
 
 function onStreamError(data) {
   isStreaming.value = false
+  resetStreamingState()
+  
+  // If it was just stopped (not a real error), don't show alert
+  if (data.stopped) {
+    console.log('Generation stopped')
+    return
+  }
+  
   console.error('Stream error:', data.error)
-  alert('Error: ' + data.error)
+  showToast('错误: ' + data.error)
 }
 
 function onToolCallStart(data) {
@@ -732,6 +885,26 @@ function onToolCallEnd(data) {
   scrollToBottom()
 }
 
+function onGenerationStopped(data) {
+  resetStreamingState()
+  console.log('Generation stopped:', data)
+}
+
+function onDisconnected(data) {
+  if (isStreaming.value) {
+    resetStreamingState()
+    showToast('连接断开，生成已停止')
+  }
+}
+
+function onConnectError(data) {
+  showToast('连接错误: ' + data.error)
+}
+
+function onReconnected(data) {
+  showToast('已重新连接')
+}
+
 async function initializeChatView() {
   await Promise.all([
     chatStore.loadConversations(),
@@ -756,6 +929,10 @@ onMounted(() => {
   socketService.on('tool_call_start', onToolCallStart)
   socketService.on('tool_call_args', onToolCallArgs)
   socketService.on('tool_call_end', onToolCallEnd)
+  socketService.on('generation_stopped', onGenerationStopped)
+  socketService.on('disconnected', onDisconnected)
+  socketService.on('connect_error', onConnectError)
+  socketService.on('reconnected', onReconnected)
 
   initializeChatView()
 })
@@ -771,6 +948,10 @@ onUnmounted(() => {
   socketService.off('tool_call_start', onToolCallStart)
   socketService.off('tool_call_args', onToolCallArgs)
   socketService.off('tool_call_end', onToolCallEnd)
+  socketService.off('generation_stopped', onGenerationStopped)
+  socketService.off('disconnected', onDisconnected)
+  socketService.off('connect_error', onConnectError)
+  socketService.off('reconnected', onReconnected)
 })
 
 watch(() => chatStore.selectedModel, (model) => {
@@ -1167,6 +1348,21 @@ watch(() => chatStore.selectedModel, (model) => {
   }
 }
 
+.messages-center-wrapper {
+  max-width: 50%;
+  margin: 0 auto;
+  min-width: 600px;
+  
+  @media (max-width: 1200px) {
+    max-width: 70%;
+  }
+  
+  @media (max-width: 900px) {
+    max-width: 90%;
+    min-width: unset;
+  }
+}
+
 .message-list-wrapper {
   display: flex;
   flex-direction: column;
@@ -1174,45 +1370,62 @@ watch(() => chatStore.selectedModel, (model) => {
 }
 
 .message {
-  display: flex;
-  gap: 1rem;
   margin-bottom: 1.5rem;
+  position: relative;
   
   &.user {
-    .message-content {
-      background-color: var(--primary-color);
-      color: white;
-    }
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
   }
   
   &.assistant {
-    .message-content {
-      background-color: var(--bg-primary);
-    }
+    display: block;
   }
 }
 
-.message-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background-color: var(--bg-tertiary);
+.user-message-wrapper {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.125rem;
-  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 80%;
 }
 
-.message-content {
-  max-width: 70%;
-  padding: 1rem 1.25rem;
-  border-radius: 12px;
-  box-shadow: var(--shadow-sm);
+// 用户消息气泡样式
+.message-bubble {
+  padding: 0.875rem 1.125rem;
+  border-radius: 18px 18px 4px 18px;
+  background-color: var(--primary-color);
+  color: white;
   line-height: 1.6;
+  word-wrap: break-word;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+// 用户消息操作按钮
+.user-message-actions {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  margin-top: 0.5rem;
+  height: 32px; /* 始终占位，避免悬停时上下闪动 */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+
+  &.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+// 助手消息内容样式（无气泡）
+.assistant-message-content {
+  line-height: 1.7;
+  color: var(--text-primary);
   
   :deep(p) {
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.875rem;
     
     &:last-child {
       margin-bottom: 0;
@@ -1225,7 +1438,7 @@ watch(() => chatStore.selectedModel, (model) => {
     padding: 1rem;
     border-radius: 8px;
     overflow-x: auto;
-    margin: 0.75rem 0;
+    margin: 0.875rem 0;
     
     code {
       background: none;
@@ -1239,24 +1452,140 @@ watch(() => chatStore.selectedModel, (model) => {
     border-radius: 4px;
     font-size: 0.875em;
   }
-
-  .user & :deep(code) {
-    background-color: rgba(255,255,255,0.2);
-  }
   
   :deep(ul), :deep(ol) {
-    margin: 0.75rem 0;
+    margin: 0.875rem 0;
     padding-left: 1.5rem;
   }
+  
+  :deep(li) {
+    margin-bottom: 0.375rem;
+  }
+  
   :deep(table) {
     width: 100%;
     border-collapse: collapse;
-    margin: 0.75rem 0;
+    margin: 0.875rem 0;
   }
+  
   :deep(th), :deep(td) {
     border: 1px solid var(--border-color);
     padding: 0.5rem;
     text-align: left;
+  }
+  
+  :deep(blockquote) {
+    border-left: 3px solid var(--primary-color);
+    padding-left: 1rem;
+    margin: 0.875rem 0;
+    color: var(--text-secondary);
+  }
+  
+  :deep(h1), :deep(h2), :deep(h3), :deep(h4), :deep(h5), :deep(h6) {
+    margin-top: 1.25rem;
+    margin-bottom: 0.625rem;
+    font-weight: 600;
+  }
+  
+  :deep(hr) {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 1rem 0;
+  }
+}
+
+// 助手消息操作按钮
+.assistant-message-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  height: 32px; /* 始终占位，避免悬停时上下闪动 */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+
+  &.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+// 通用操作按钮样式
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+}
+
+.action-icon-img {
+  width: 16px;
+  height: 16px;
+  display: block;
+  filter: saturate(0) brightness(0.55);
+  transition: filter 0.2s ease;
+}
+
+.action-btn:hover .action-icon-img {
+  filter: saturate(0) brightness(0.25);
+}
+
+// Toast通知样式
+:global(.toast-notification) {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  z-index: 9999;
+  animation: toast-in 0.3s ease;
+  
+  &.fade-out {
+    animation: toast-out 0.3s ease forwards;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
   }
 }
 
@@ -1383,6 +1712,18 @@ watch(() => chatStore.selectedModel, (model) => {
   display: flex;
   gap: 0.75rem;
   align-items: flex-end;
+  max-width: 50%;
+  margin: 0 auto;
+  min-width: 600px;
+  
+  @media (max-width: 1200px) {
+    max-width: 70%;
+  }
+  
+  @media (max-width: 900px) {
+    max-width: 90%;
+    min-width: unset;
+  }
 }
 
 .message-input {

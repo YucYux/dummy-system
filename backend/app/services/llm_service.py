@@ -49,7 +49,7 @@ class LLMService:
             base_url=self.model_config['api_url']
         )
     
-    def chat_stream(self, messages: list, use_tools: bool = True, reasoning_effort: str = None):
+    def chat_stream(self, messages: list, use_tools: bool = True, reasoning_effort: str = None, stop_flag=None):
         """
         Stream chat completion with tool support.
         
@@ -61,6 +61,12 @@ class LLMService:
         - {"type": "tool_call_end", "result": {...}}  - Tool call result
         - {"type": "done", "finish_reason": "...", "reasoning": "..."}  - Stream complete
         - {"type": "error", "message": "..."}  - Error occurred
+        
+        Args:
+            messages: List of message dicts
+            use_tools: Whether to enable tool calling
+            reasoning_effort: Reasoning effort level
+            stop_flag: threading.Event() to signal stopping the generation
         """
         
         try:
@@ -99,6 +105,11 @@ class LLMService:
             )
             
             for chunk in response:
+                # Check stop flag
+                if stop_flag and stop_flag.is_set():
+                    yield {"type": "done", "finish_reason": "stopped", "reasoning": None}
+                    return
+                
                 delta = chunk.choices[0].delta if chunk.choices else None
                 
                 if not delta:
@@ -188,7 +199,7 @@ class LLMService:
         except Exception as e:
             yield {"type": "error", "message": str(e)}
     
-    def chat_with_tools(self, messages: list, max_iterations: int = 10, reasoning_effort: str = None):
+    def chat_with_tools(self, messages: list, max_iterations: int = 10, reasoning_effort: str = None, stop_flag=None):
         """
         Complete chat with automatic tool execution loop.
         
@@ -196,12 +207,22 @@ class LLMService:
         For reasoning models (like MiniMax), it preserves reasoning history to improve
         Agent task success rates.
         
+        Args:
+            messages: List of message dicts
+            max_iterations: Maximum number of tool call iterations
+            reasoning_effort: Reasoning effort level
+            stop_flag: threading.Event() to signal stopping the generation
+        
         Yields events throughout the process.
         """
         current_messages = messages.copy()
         iteration = 0
         
         while iteration < max_iterations:
+            # Check stop flag before each iteration
+            if stop_flag and stop_flag.is_set():
+                return
+            
             iteration += 1
             
             tool_calls_made = []
@@ -209,7 +230,7 @@ class LLMService:
             assistant_reasoning = ""
             
             # Stream response
-            for event in self.chat_stream(current_messages, reasoning_effort=reasoning_effort):
+            for event in self.chat_stream(current_messages, reasoning_effort=reasoning_effort, stop_flag=stop_flag):
                 yield event
                 
                 if event["type"] == "content":
@@ -222,6 +243,10 @@ class LLMService:
                     tool_calls_made.append(event)
                 
                 elif event["type"] == "done":
+                    # Check if stopped
+                    if event.get("finish_reason") == "stopped":
+                        return
+                    
                     # Capture any reasoning from the done event
                     if event.get("reasoning"):
                         assistant_reasoning = event["reasoning"]

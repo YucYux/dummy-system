@@ -6,7 +6,8 @@ from flask import Blueprint, request, jsonify, g
 from app.models.conversation import (
     create_conversation, get_conversations, get_conversation,
     update_conversation, delete_conversation,
-    add_message, get_messages
+    add_message, get_messages, delete_message, delete_messages_from,
+    get_message_by_id
 )
 from app.utils.auth import token_required
 
@@ -104,3 +105,60 @@ def list_tools():
         })
     
     return jsonify({'tools': tool_list})
+
+
+@chat_bp.route('/conversations/<conversation_id>/messages/<message_id>/regenerate', methods=['POST'])
+@token_required
+def regenerate_message(conversation_id, message_id):
+    """
+    Delete an assistant message to prepare for regeneration.
+    The frontend will re-send the request via WebSocket after this.
+    """
+    # Verify the message exists and is an assistant message
+    message = get_message_by_id(g.user_id, conversation_id, message_id)
+    
+    if not message:
+        return jsonify({'error': '消息不存在'}), 404
+    
+    if message['role'] != 'assistant':
+        return jsonify({'error': '只能重新生成助手消息'}), 400
+    
+    # Delete the assistant message
+    success = delete_message(g.user_id, conversation_id, message_id)
+    
+    if not success:
+        return jsonify({'error': '删除消息失败'}), 500
+    
+    return jsonify({
+        'success': True,
+        'message': '消息已删除，准备重新生成'
+    })
+
+
+@chat_bp.route('/conversations/<conversation_id>/messages/<message_id>/revert', methods=['POST'])
+@token_required
+def revert_to_message(conversation_id, message_id):
+    """
+    Delete a user message and all subsequent messages.
+    Returns the content of the deleted message for filling in the input.
+    """
+    # Verify the message exists and is a user message
+    message = get_message_by_id(g.user_id, conversation_id, message_id)
+    
+    if not message:
+        return jsonify({'error': '消息不存在'}), 404
+    
+    if message['role'] != 'user':
+        return jsonify({'error': '只能返回到用户消息'}), 400
+    
+    # Delete this message and all subsequent messages
+    deleted_count = delete_messages_from(g.user_id, conversation_id, message_id)
+    
+    if deleted_count == 0:
+        return jsonify({'error': '删除消息失败'}), 500
+    
+    return jsonify({
+        'success': True,
+        'deleted_count': deleted_count,
+        'content': message['content']
+    })

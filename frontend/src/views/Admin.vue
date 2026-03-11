@@ -447,7 +447,7 @@ onMounted(() => {
 .status-badge {
   display: inline-block;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   font-size: 0.75rem;
   font-weight: 500;
   
@@ -465,7 +465,7 @@ onMounted(() => {
 .reasoning-badge {
   display: inline-block;
   padding: 0.125rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   font-size: 0.6875rem;
   font-weight: 500;
 
@@ -483,7 +483,7 @@ onMounted(() => {
 .role-badge {
   display: inline-block;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   font-size: 0.75rem;
   font-weight: 500;
   
@@ -504,7 +504,7 @@ onMounted(() => {
   padding: 0.125rem 0.375rem;
   background-color: var(--primary-color);
   color: white;
-  border-radius: 4px;
+  border-radius: var(--border-radius-sm);
   font-size: 0.6875rem;
   font-weight: 500;
 }
@@ -531,7 +531,7 @@ onMounted(() => {
 
 .modal {
   background-color: var(--bg-primary);
-  border-radius: 12px;
+  border-radius: var(--border-radius-lg);
   box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 500px;

@@ -226,3 +226,84 @@ def get_messages_for_llm(user_id: str, conversation_id: str) -> list:
         llm_messages.append(message)
     
     return llm_messages
+
+
+def delete_message(user_id: str, conversation_id: str, message_id: str) -> bool:
+    """Delete a specific message from a conversation."""
+    conn = get_user_db(user_id)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        DELETE FROM messages 
+        WHERE id = ? AND conversation_id = ?
+    ''', (message_id, conversation_id))
+    
+    conn.commit()
+    deleted = cursor.rowcount > 0
+    conn.close()
+    
+    return deleted
+
+
+def delete_messages_from(user_id: str, conversation_id: str, message_id: str) -> int:
+    """
+    Delete a message and all subsequent messages in a conversation.
+    Returns the number of deleted messages.
+    """
+    conn = get_user_db(user_id)
+    cursor = conn.cursor()
+    
+    # First get the created_at of the target message
+    cursor.execute('''
+        SELECT created_at FROM messages 
+        WHERE id = ? AND conversation_id = ?
+    ''', (message_id, conversation_id))
+    
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return 0
+    
+    target_created_at = row['created_at']
+    
+    # Delete this message and all messages created after it
+    cursor.execute('''
+        DELETE FROM messages 
+        WHERE conversation_id = ? AND created_at >= ?
+    ''', (conversation_id, target_created_at))
+    
+    deleted_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    
+    return deleted_count
+
+
+def get_message_by_id(user_id: str, conversation_id: str, message_id: str) -> dict:
+    """Get a specific message by ID."""
+    conn = get_user_db(user_id)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT id, conversation_id, role, content, tool_calls, tool_call_id, parts, created_at
+        FROM messages
+        WHERE id = ? AND conversation_id = ?
+    ''', (message_id, conversation_id))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        tool_calls = json.loads(row['tool_calls']) if row['tool_calls'] else None
+        parts = json.loads(row['parts']) if row['parts'] else None
+        return {
+            'id': row['id'],
+            'conversation_id': row['conversation_id'],
+            'role': row['role'],
+            'content': row['content'],
+            'tool_calls': tool_calls,
+            'tool_call_id': row['tool_call_id'],
+            'parts': parts,
+            'created_at': row['created_at']
+        }
+    return None

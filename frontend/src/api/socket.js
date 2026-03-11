@@ -21,8 +21,27 @@ export const socketService = {
       }
     })
     
-    socket.on('disconnect', () => {
-      console.log('Socket disconnected')
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason)
+      this.trigger('disconnected', { reason })
+    })
+    
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error)
+      this.trigger('connect_error', { error: error.message })
+    })
+    
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('Socket reconnected after', attemptNumber, 'attempts')
+      const token = api.getToken()
+      if (token) {
+        socket.emit('authenticate', { token })
+      }
+      this.trigger('reconnected', { attemptNumber })
+    })
+    
+    socket.on('generation_stopped', (data) => {
+      this.trigger('generation_stopped', data)
     })
     
     socket.on('authenticated', (data) => {
@@ -78,13 +97,14 @@ export const socketService = {
     }
   },
   
-  sendMessage(conversationId, content, modelId = null, reasoningEffort = 'auto') {
+  sendMessage(conversationId, content, modelId = null, reasoningEffort = 'auto', isRegenerate = false) {
     if (socket?.connected) {
       socket.emit('send_message', {
         conversation_id: conversationId,
         content,
         model_id: modelId,
-        reasoning_effort: reasoningEffort
+        reasoning_effort: reasoningEffort,
+        is_regenerate: isRegenerate
       })
     }
   },
