@@ -55,7 +55,15 @@
                 </tbody>
               </table>
               
-              <div v-if="models.length === 0" class="empty-state">
+              <div v-if="isModelsLoading" class="empty-state">
+                <p>模型配置加载中...</p>
+              </div>
+
+              <div v-else-if="modelsError" class="empty-state">
+                <p>{{ modelsError }}</p>
+              </div>
+
+              <div v-else-if="models.length === 0" class="empty-state">
                 <p>暂无模型配置</p>
               </div>
             </div>
@@ -228,6 +236,8 @@ const authStore = useAuthStore()
 
 const models = ref([])
 const users = ref([])
+const isModelsLoading = ref(false)
+const modelsError = ref('')
 const showModelModal = ref(false)
 const showUserModal = ref(false)
 const editingModel = ref(null)
@@ -269,8 +279,18 @@ const userForm = ref({
 })
 
 async function loadModels() {
-  const response = await api.getAdminModels()
-  models.value = response.models
+  isModelsLoading.value = true
+  modelsError.value = ''
+
+  try {
+    const response = await api.getAdminModels()
+    models.value = response.models
+  } catch (err) {
+    modelsError.value = err.error || '加载模型配置失败'
+    models.value = []
+  } finally {
+    isModelsLoading.value = false
+  }
 }
 
 async function loadUsers() {

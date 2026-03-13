@@ -109,9 +109,11 @@ export const socketService = {
     }
   },
   
-  stopGeneration() {
+  stopGeneration(conversationId = null) {
     if (socket?.connected) {
-      socket.emit('stop_generation', {})
+      socket.emit('stop_generation', {
+        conversation_id: conversationId
+      })
     }
   },
   

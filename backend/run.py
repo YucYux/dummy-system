@@ -3,6 +3,10 @@
 Entry point for running the Flask application.
 """
 
+# Monkey patch MUST be the first thing before any other imports
+from gevent import monkey
+monkey.patch_all()
+
 import sys
 import os
 

@@ -17,10 +17,12 @@
             @click="selectConversation(conv.id)"
           >
             <span class="conversation-title">{{ conv.title }}</span>
+            <span v-if="isConversationStreaming(conv.id)" class="conversation-status">生成中</span>
             <button 
               class="delete-btn"
+              :disabled="isConversationStreaming(conv.id)"
               @click.stop="deleteConversation(conv.id)"
-              title="删除对话"
+              :title="isConversationStreaming(conv.id) ? '该对话正在生成，暂时不能删除' : '删除对话'"
             >
               ×
             </button>
@@ -125,16 +127,26 @@
             </div>
           </div>
           
-          <form @submit.prevent="sendFirstMessage" class="welcome-input-form">
+          <form @submit.prevent="hasAnyStreamingConversation ? handleStop() : sendFirstMessage()" class="welcome-input-form">
             <textarea
               v-model="inputMessage"
               class="input welcome-input"
               placeholder="在此处输入消息开始新对话..."
-              @keydown.enter.exact.prevent="sendFirstMessage"
+              @keydown.enter.exact.prevent="hasAnyStreamingConversation ? handleStop() : sendFirstMessage()"
+              :disabled="hasAnyStreamingConversation"
               rows="1"
             ></textarea>
             <button 
-              type="submit" 
+              v-if="hasAnyStreamingConversation"
+              type="button"
+              class="btn btn-danger send-btn"
+              @click="handleStop"
+            >
+              {{ stopButtonLabel }}
+            </button>
+            <button 
+              v-else
+              type="submit"
               class="btn btn-primary send-btn"
               :disabled="!canSendFirstMessage"
             >
@@ -266,7 +278,7 @@
                       v-if="isLatestAssistantMessage(message.id)"
                       class="action-btn" 
                       @click="handleRegenerate(message.id)"
-                      :disabled="isStreaming"
+                      :disabled="hasAnyStreamingConversation"
                       title="重新生成"
                     >
                       <img :src="iconRedo" class="action-icon-img" alt="" />
@@ -317,16 +329,16 @@
               class="input message-input"
               placeholder="在此处输入消息。回车键发送；Shift+回车键换行。"
               @keydown.enter.exact.prevent="handleSubmit"
-              :disabled="isStreaming"
+              :disabled="hasAnyStreamingConversation"
               rows="1"
             ></textarea>
             <button 
-              v-if="isStreaming"
+              v-if="hasAnyStreamingConversation"
               type="button" 
               class="btn btn-danger send-btn"
               @click="handleStop"
             >
-              停止
+              {{ stopButtonLabel }}
             </button>
             <button 
               v-else
@@ -362,13 +374,7 @@ const authStore = useAuthStore()
 const chatStore = useChatStore()
 
 const inputMessage = ref('')
-const isStreaming = ref(false)
-const streamingContent = ref('')
-const activeToolCalls = ref([])
-const streamingParts = ref([])
-const streamingMessageId = ref(null)
 const messagesContainer = ref(null)
-const currentConversationId = ref(null)
 const hoveredMessageId = ref(null)
 
 // Custom Dropdown States
@@ -401,8 +407,23 @@ const currentReasoningLabel = computed(() => {
 })
 
 const canSendFirstMessage = computed(() => {
-  return Boolean(inputMessage.value.trim() && selectedModelId.value)
+  return Boolean(inputMessage.value.trim() && selectedModelId.value && !hasAnyStreamingConversation.value)
 })
+
+const currentConversationId = computed(() => chatStore.currentConversationId)
+const currentStreamingState = computed(() => chatStore.getStreamingState(currentConversationId.value))
+const isStreaming = computed(() => currentStreamingState.value.isStreaming)
+const streamingParts = computed(() => currentStreamingState.value.streamingParts)
+const streamingMessageId = computed(() => currentStreamingState.value.streamingMessageId)
+const hasAnyStreamingConversation = computed(() => chatStore.hasAnyStreamingConversation)
+const activeStreamingConversationId = computed(() => chatStore.activeStreamingConversationId)
+const stopButtonLabel = computed(() => {
+  return isStreaming.value ? '停止' : '停止后台回答'
+})
+
+function isConversationStreaming(conversationId) {
+  return chatStore.isConversationStreaming(conversationId)
+}
 
 // Configure marked
 marked.setOptions({
@@ -447,13 +468,13 @@ function getMessageParts(message) {
   return parts
 }
 
+let scrollRafId = null
 function scrollToBottom() {
-  nextTick(() => {
+  if (scrollRafId) return
+  scrollRafId = requestAnimationFrame(() => {
+    scrollRafId = null
     if (messagesContainer.value) {
-      messagesContainer.value.scrollTo({
-        top: messagesContainer.value.scrollHeight,
-        behavior: 'smooth'
-      })
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
     }
   })
 }
@@ -509,9 +530,7 @@ function goToHome() {
   if (currentConversationId.value) {
     socketService.leaveConversation(currentConversationId.value)
   }
-  currentConversationId.value = null
   chatStore.clearCurrent()
-  resetStreamingState()
   syncHomeModelSelection()
 }
 
@@ -528,7 +547,6 @@ async function sendFirstMessage() {
   
   // 先创建对话
   const conv = await chatStore.createConversationWithModel(selectedModelId.value, chatStore.reasoningEffort)
-  currentConversationId.value = conv.id
   socketService.joinConversation(conv.id)
   
   // 添加用户消息占位
@@ -557,14 +575,12 @@ async function sendFirstMessage() {
 }
 
 async function selectConversation(conversationId) {
+  if (currentConversationId.value === conversationId) return
+
   if (currentConversationId.value) {
     socketService.leaveConversation(currentConversationId.value)
   }
-  
-  // 重置流式状态
-  resetStreamingState()
-  
-  currentConversationId.value = conversationId
+
   await chatStore.loadConversation(conversationId)
   
   // 同步模型选择
@@ -577,6 +593,11 @@ async function selectConversation(conversationId) {
 }
 
 async function deleteConversation(conversationId) {
+  if (isConversationStreaming(conversationId)) {
+    showToast('对话正在生成，暂时不能删除')
+    return
+  }
+
   if (confirm('确定要删除这个对话吗？')) {
     const wasCurrentConversation = currentConversationId.value === conversationId
     
@@ -588,14 +609,14 @@ async function deleteConversation(conversationId) {
     
     // 如果删除的是当前对话，回到起始页
     if (wasCurrentConversation) {
-      currentConversationId.value = null
+      chatStore.clearCurrent()
       syncHomeModelSelection()
     }
   }
 }
 
 function sendMessage() {
-  if (!inputMessage.value.trim() || isStreaming.value) return
+  if (!inputMessage.value.trim() || hasAnyStreamingConversation.value) return
   
   const message = inputMessage.value.trim()
   inputMessage.value = ''
@@ -630,16 +651,8 @@ function handleSubmit() {
 }
 
 function handleStop() {
-  socketService.stopGeneration()
-  resetStreamingState()
-}
-
-function resetStreamingState() {
-  isStreaming.value = false
-  streamingContent.value = ''
-  activeToolCalls.value = []
-  streamingParts.value = []
-  streamingMessageId.value = null
+  if (!activeStreamingConversationId.value) return
+  socketService.stopGeneration(activeStreamingConversationId.value)
 }
 
 function handleModelChange() {
@@ -700,7 +713,7 @@ function showToast(message) {
 
 // 重新生成消息
 async function handleRegenerate(messageId) {
-  if (isStreaming.value) return
+  if (hasAnyStreamingConversation.value) return
   
   try {
     // 调用后端API删除该消息
@@ -734,6 +747,11 @@ async function handleRegenerate(messageId) {
 
 // 返回到指定用户消息状态
 async function handleRevertToMessage(message) {
+  if (hasAnyStreamingConversation.value) {
+    showToast('有对话正在生成，请先停止')
+    return
+  }
+
   if (!confirm('确定要返回到这条消息发送之前的状态吗？该消息及其后的所有回复都将被删除。')) {
     return
   }
@@ -760,152 +778,15 @@ async function handleRevertToMessage(message) {
 
 function handleLogout() {
   socketService.disconnect()
+  chatStore.clearAllStreamingStates()
+  chatStore.clearCurrent()
   authStore.logout()
   router.push('/login')
 }
 
-// Socket event handlers
-function onAuthenticated() {
-  chatStore.loadConversations()
-  chatStore.loadModels().then(() => {
-    if (!currentConversationId.value) {
-      syncHomeModelSelection()
-    }
-  })
-}
-
-function onMessageSaved(data) {
-  const existingIndex = chatStore.messages.findIndex(
-    (msg) => msg.pending && msg.role === 'user' && msg.content === data.message.content
-  )
-  if (existingIndex !== -1) {
-    const oldMsg = chatStore.messages[existingIndex]
-    const updatedMessage = { ...data.message, _clientId: oldMsg._clientId || oldMsg.id }
-    chatStore.messages.splice(existingIndex, 1, updatedMessage)
-  } else {
-    chatStore.messages.push(data.message)
-  }
-  scrollToBottom()
-}
-
-function onConversationUpdated(data) {
-  chatStore.updateConversationTitle(data.title)
-}
-
-function onStreamStart() {
-  isStreaming.value = true
-  streamingContent.value = ''
-  activeToolCalls.value = []
-  streamingParts.value = []
-  streamingMessageId.value = `streaming-${Date.now()}`
-  
-  requestAnimationFrame(() => {
-    scrollToBottom()
-  })
-}
-
-function onStreamContent(data) {
-  streamingContent.value += data.content
-  
-  const parts = streamingParts.value
-  const lastPart = parts[parts.length - 1]
-  if (lastPart && lastPart.type === 'content') {
-    lastPart.text += data.content
-  } else {
-    parts.push({ type: 'content', text: data.content })
-  }
-  
-  scrollToBottom()
-}
-
-function onStreamEnd(data) {
-  // 将 clientId 附加到消息，使其与流式消息使用相同的 key，避免闪烁
-  const messageWithClientId = {
-    ...data.message,
-    _clientId: streamingMessageId.value
-  }
-  
-  chatStore.addMessage(messageWithClientId)
-  
-  // 延迟设置 isStreaming 为 false，让 Vue 能平滑过渡
-  nextTick(() => {
-    isStreaming.value = false
-    streamingContent.value = ''
-    activeToolCalls.value = []
-    streamingParts.value = []
-    streamingMessageId.value = null
-  })
-  
-  scrollToBottom()
-}
-
-function onStreamError(data) {
-  isStreaming.value = false
-  resetStreamingState()
-  
-  // If it was just stopped (not a real error), don't show alert
-  if (data.stopped) {
-    console.log('Generation stopped')
-    return
-  }
-  
-  console.error('Stream error:', data.error)
-  showToast('错误: ' + data.error)
-}
-
-function onToolCallStart(data) {
-  const toolCall = {
-    id: data.id,
-    name: data.tool,
-    args: '',
-    result: null
-  }
-  activeToolCalls.value.push(toolCall)
-  
-  streamingParts.value.push({
-    type: 'tool_call',
-    toolCall: toolCall
-  })
-  
-  scrollToBottom()
-}
-
-function onToolCallArgs(data) {
-  const tc = activeToolCalls.value.find(t => t.id === data.id)
-  if (tc) {
-    tc.args += data.args
-  }
-}
-
-function onToolCallEnd(data) {
-  const tc = activeToolCalls.value.find(t => t.id === data.id)
-  if (tc) {
-    tc.result = data.result || data.error
-  }
-  scrollToBottom()
-}
-
-function onGenerationStopped(data) {
-  resetStreamingState()
-  console.log('Generation stopped:', data)
-}
-
-function onDisconnected(data) {
-  if (isStreaming.value) {
-    resetStreamingState()
-    showToast('连接断开，生成已停止')
-  }
-}
-
-function onConnectError(data) {
-  showToast('连接错误: ' + data.error)
-}
-
-function onReconnected(data) {
-  showToast('已重新连接')
-}
-
 async function initializeChatView() {
+  chatStore.initializeSocket()
+
   await Promise.all([
     chatStore.loadConversations(),
     chatStore.loadModels()
@@ -913,50 +794,70 @@ async function initializeChatView() {
 
   if (!currentConversationId.value) {
     syncHomeModelSelection()
+  } else {
+    socketService.joinConversation(currentConversationId.value)
+  }
+}
+
+function handlePageUnload() {
+  if (!activeStreamingConversationId.value) return
+  socketService.stopGeneration(activeStreamingConversationId.value)
+  socketService.disconnect()
+}
+
+let streamingScrollInterval = null
+
+function startStreamingScroll() {
+  if (streamingScrollInterval) return
+  streamingScrollInterval = setInterval(() => {
+    if (isStreaming.value) {
+      scrollToBottom()
+    }
+  }, 100)
+}
+
+function stopStreamingScroll() {
+  if (streamingScrollInterval) {
+    clearInterval(streamingScrollInterval)
+    streamingScrollInterval = null
   }
 }
 
 onMounted(() => {
-  socketService.connect()
-  
-  socketService.on('authenticated', onAuthenticated)
-  socketService.on('message_saved', onMessageSaved)
-  socketService.on('conversation_updated', onConversationUpdated)
-  socketService.on('stream_start', onStreamStart)
-  socketService.on('stream_content', onStreamContent)
-  socketService.on('stream_end', onStreamEnd)
-  socketService.on('stream_error', onStreamError)
-  socketService.on('tool_call_start', onToolCallStart)
-  socketService.on('tool_call_args', onToolCallArgs)
-  socketService.on('tool_call_end', onToolCallEnd)
-  socketService.on('generation_stopped', onGenerationStopped)
-  socketService.on('disconnected', onDisconnected)
-  socketService.on('connect_error', onConnectError)
-  socketService.on('reconnected', onReconnected)
+  window.addEventListener('beforeunload', handlePageUnload)
+  window.addEventListener('pagehide', handlePageUnload)
 
   initializeChatView()
 })
 
 onUnmounted(() => {
-  socketService.off('authenticated', onAuthenticated)
-  socketService.off('message_saved', onMessageSaved)
-  socketService.off('conversation_updated', onConversationUpdated)
-  socketService.off('stream_start', onStreamStart)
-  socketService.off('stream_content', onStreamContent)
-  socketService.off('stream_end', onStreamEnd)
-  socketService.off('stream_error', onStreamError)
-  socketService.off('tool_call_start', onToolCallStart)
-  socketService.off('tool_call_args', onToolCallArgs)
-  socketService.off('tool_call_end', onToolCallEnd)
-  socketService.off('generation_stopped', onGenerationStopped)
-  socketService.off('disconnected', onDisconnected)
-  socketService.off('connect_error', onConnectError)
-  socketService.off('reconnected', onReconnected)
+  window.removeEventListener('beforeunload', handlePageUnload)
+  window.removeEventListener('pagehide', handlePageUnload)
+  stopStreamingScroll()
+  if (scrollRafId) {
+    cancelAnimationFrame(scrollRafId)
+    scrollRafId = null
+  }
 })
 
 watch(() => chatStore.selectedModel, (model) => {
   if (model) {
     selectedModelId.value = model.id
+  }
+})
+
+watch(() => chatStore.messages.length, () => {
+  if (currentConversationId.value) {
+    scrollToBottom()
+  }
+})
+
+watch(isStreaming, (streaming) => {
+  if (streaming) {
+    startStreamingScroll()
+  } else {
+    stopStreamingScroll()
+    scrollToBottom()
   }
 })
 </script>
@@ -1032,6 +933,13 @@ watch(() => chatStore.selectedModel, (model) => {
   font-size: 0.875rem;
 }
 
+.conversation-status {
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--primary-color);
+}
+
 .delete-btn {
   background: none;
   border: none;
@@ -1048,6 +956,12 @@ watch(() => chatStore.selectedModel, (model) => {
   
   &:hover {
     color: var(--danger-color);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    color: var(--text-muted);
   }
 }
 
