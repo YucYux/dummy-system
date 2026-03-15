@@ -204,3 +204,67 @@ def delete_model(model_id: str) -> bool:
             return True
     
     return False
+
+
+# ============ Embedding Model Configuration ============
+
+def init_embedding_config():
+    """Initialize embedding configuration file with default values."""
+    if not os.path.exists(config.EMBEDDING_CONFIG_PATH):
+        default_config = {
+            "provider": "OpenRouter",
+            "model_id": "qwen/qwen3-embedding-4b",
+            "api_url": "https://openrouter.ai/api/v1",
+            "api_key": "",
+            "dimension": 2560,  # Qwen3-embedding-4b outputs 2560-dim vectors
+            "enabled": False
+        }
+        save_embedding_config(default_config)
+
+
+def load_embedding_config() -> dict:
+    """Load embedding configuration from file."""
+    if not os.path.exists(config.EMBEDDING_CONFIG_PATH):
+        init_embedding_config()
+    
+    with open(config.EMBEDDING_CONFIG_PATH, 'r') as f:
+        return json.load(f)
+
+
+def save_embedding_config(embedding_config: dict):
+    """Save embedding configuration to file."""
+    with open(config.EMBEDDING_CONFIG_PATH, 'w') as f:
+        json.dump(embedding_config, f, indent=2)
+
+
+def get_embedding_config() -> dict:
+    """Get embedding model configuration."""
+    return load_embedding_config()
+
+
+def update_embedding_config(config_data: dict) -> dict:
+    """Update embedding model configuration."""
+    current = load_embedding_config()
+    
+    updated = {
+        "provider": config_data.get('provider', current.get('provider', 'OpenRouter')),
+        "model_id": config_data.get('model_id', current.get('model_id', '')),
+        "api_url": config_data.get('api_url', current.get('api_url', '')),
+        "api_key": config_data.get('api_key', current.get('api_key', '')),
+        "dimension": config_data.get('dimension', current.get('dimension', 2560)),
+        "enabled": config_data.get('enabled', current.get('enabled', False))
+    }
+    
+    save_embedding_config(updated)
+    return updated
+
+
+def is_embedding_configured() -> bool:
+    """Check if embedding model is properly configured and enabled."""
+    config_data = load_embedding_config()
+    return (
+        config_data.get('enabled', False) and
+        config_data.get('api_key', '') and
+        config_data.get('model_id', '') and
+        config_data.get('api_url', '')
+    )

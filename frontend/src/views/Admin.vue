@@ -70,6 +70,67 @@
           </div>
         </section>
         
+        <!-- Embedding Model Configuration -->
+        <section class="admin-section">
+          <div class="section-header">
+            <h2>Embedding 模型配置</h2>
+          </div>
+          
+          <div class="card">
+            <div class="card-body">
+              <p class="section-desc">配置用于文档向量化的 Embedding 模型。该模型将用于 RAG 系统的文档处理。</p>
+              
+              <form @submit.prevent="saveEmbeddingConfig" class="embedding-form">
+                <div class="form-row">
+                  <div class="input-group">
+                    <label>提供商</label>
+                    <select v-model="embeddingForm.provider" class="input">
+                      <option value="OpenRouter">OpenRouter</option>
+                      <option value="custom">自定义</option>
+                    </select>
+                  </div>
+                  
+                  <div class="input-group">
+                    <label>模型 ID</label>
+                    <input v-model="embeddingForm.model_id" type="text" class="input" placeholder="qwen/qwen3-embedding-4b" />
+                  </div>
+                </div>
+                
+                <div class="form-row">
+                  <div class="input-group">
+                    <label>API URL</label>
+                    <input v-model="embeddingForm.api_url" type="text" class="input" placeholder="https://openrouter.ai/api/v1" />
+                  </div>
+                  
+                  <div class="input-group">
+                    <label>向量维度</label>
+                    <input v-model.number="embeddingForm.dimension" type="number" class="input" placeholder="2560" />
+                  </div>
+                </div>
+                
+                <div class="input-group full-width">
+                  <label>API Key</label>
+                  <input v-model="embeddingForm.api_key" type="password" class="input" placeholder="sk-..." />
+                </div>
+                
+                <div class="checkbox-group">
+                  <label>
+                    <input type="checkbox" v-model="embeddingForm.enabled" />
+                    启用 Embedding 模型
+                  </label>
+                </div>
+                
+                <div class="form-actions">
+                  <button type="submit" class="btn btn-primary" :disabled="embeddingSaving">
+                    {{ embeddingSaving ? '保存中...' : '保存配置' }}
+                  </button>
+                  <span v-if="embeddingSaved" class="save-success">✓ 已保存</span>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+        
         <!-- Users Management -->
         <section class="admin-section">
           <div class="section-header">
@@ -242,6 +303,18 @@ const showModelModal = ref(false)
 const showUserModal = ref(false)
 const editingModel = ref(null)
 
+// Embedding config
+const embeddingForm = ref({
+  provider: 'OpenRouter',
+  model_id: '',
+  api_url: 'https://openrouter.ai/api/v1',
+  api_key: '',
+  dimension: 2560,
+  enabled: false
+})
+const embeddingSaving = ref(false)
+const embeddingSaved = ref(false)
+
 const modelForm = ref({
   name: '',
   provider: 'OpenRouter',
@@ -296,6 +369,41 @@ async function loadModels() {
 async function loadUsers() {
   const response = await api.getUsers()
   users.value = response.users
+}
+
+async function loadEmbeddingConfig() {
+  try {
+    const response = await api.getEmbeddingConfig()
+    if (response.embedding) {
+      embeddingForm.value = {
+        provider: response.embedding.provider || 'OpenRouter',
+        model_id: response.embedding.model_id || '',
+        api_url: response.embedding.api_url || 'https://openrouter.ai/api/v1',
+        api_key: response.embedding.api_key || '',
+        dimension: response.embedding.dimension || 2560,
+        enabled: response.embedding.enabled || false
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load embedding config:', err)
+  }
+}
+
+async function saveEmbeddingConfig() {
+  embeddingSaving.value = true
+  embeddingSaved.value = false
+  
+  try {
+    await api.updateEmbeddingConfig(embeddingForm.value)
+    embeddingSaved.value = true
+    setTimeout(() => {
+      embeddingSaved.value = false
+    }, 3000)
+  } catch (err) {
+    alert('保存失败: ' + (err.error || err.message || '未知错误'))
+  } finally {
+    embeddingSaving.value = false
+  }
 }
 
 function editModel(model) {
@@ -393,6 +501,7 @@ function formatDate(dateStr) {
 onMounted(() => {
   loadModels()
   loadUsers()
+  loadEmbeddingConfig()
 })
 </script>
 
@@ -649,5 +758,45 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1.5rem;
+}
+
+// Embedding Config
+.section-desc {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+
+.embedding-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.input-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.save-success {
+  color: #16a34a;
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 </style>

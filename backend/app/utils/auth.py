@@ -12,14 +12,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 import config
 
-from app.models.user import get_user_by_id
+from app.models.user import get_user_by_id, verify_session_token
 
 
-def generate_token(user_id: str, is_admin: bool = False) -> str:
+def generate_token(user_id: str, is_admin: bool = False, session_token: str = None) -> str:
     """Generate a JWT token for a user."""
     payload = {
         'user_id': user_id,
         'is_admin': is_admin,
+        'session_token': session_token,
         'exp': datetime.datetime.utcnow() + datetime.timedelta(seconds=config.JWT_ACCESS_TOKEN_EXPIRES),
         'iat': datetime.datetime.utcnow()
     }
@@ -61,6 +62,11 @@ def token_required(f):
         if not user:
             return jsonify({'error': '用户不存在'}), 401
         
+        # Verify session token (single device login)
+        session_token = payload.get('session_token')
+        if session_token and not verify_session_token(payload['user_id'], session_token):
+            return jsonify({'error': '会话已在其他设备登录', 'code': 'SESSION_EXPIRED'}), 401
+        
         # Store user in g for route access
         g.user = user
         g.user_id = payload['user_id']
@@ -98,6 +104,11 @@ def admin_required(f):
         user = get_user_by_id(payload['user_id'])
         if not user:
             return jsonify({'error': '用户不存在'}), 401
+        
+        # Verify session token (single device login)
+        session_token = payload.get('session_token')
+        if session_token and not verify_session_token(payload['user_id'], session_token):
+            return jsonify({'error': '会话已在其他设备登录', 'code': 'SESSION_EXPIRED'}), 401
         
         # Store user in g for route access
         g.user = user

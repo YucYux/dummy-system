@@ -33,3 +33,19 @@ CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]  # Vue dev ser
 # LLM Default Settings
 DEFAULT_MAX_TOKENS = 4096
 DEFAULT_TEMPERATURE = 0.7
+
+# RAG Configuration
+# Chunking settings (unit: tokens, calculated by tiktoken)
+RAG_DEFAULT_CHUNK_SIZE = 512  # Default chunk size in tokens
+RAG_MIN_CHUNK_SIZE = 100  # Minimum chunk size (won't split even if delimiter found)
+RAG_CHUNK_OVERLAP = 50  # Overlap between chunks in tokens
+RAG_CHUNK_DELIMITERS = ["\n\n", "\n", "。", ".", "！", "!", "？", "?"]  # Split on these (in priority order)
+
+# RAG retrieval settings
+RAG_TOP_K = 5  # Number of chunks to retrieve
+
+# Embedding model configuration storage
+EMBEDDING_CONFIG_PATH = os.path.join(DATA_DIR, "embedding_config.json")
+
+# Document library storage
+DOC_LIBRARY_DIR = os.path.join(DATA_DIR, "doc_libraries")  # Store document files and FAISS indexes

@@ -5,7 +5,8 @@ Model configuration routes.
 from flask import Blueprint, request, jsonify
 from app.models.model_config import (
     get_all_models, get_enabled_models, get_model_by_id,
-    add_model, update_model, delete_model
+    add_model, update_model, delete_model,
+    get_embedding_config, update_embedding_config, is_embedding_configured
 )
 from app.utils.auth import token_required, admin_required
 
@@ -78,3 +79,33 @@ def remove_model(model_id):
         return jsonify({'error': '模型不存在'}), 404
     
     return jsonify({'message': '模型删除成功'})
+
+
+# ============ Embedding Model Configuration Routes ============
+
+@models_bp.route('/embedding/admin', methods=['GET'])
+@admin_required
+def get_embedding_model():
+    """Get embedding model configuration for admin."""
+    config = get_embedding_config()
+    return jsonify({'embedding': config})
+
+
+@models_bp.route('/embedding/admin', methods=['PUT'])
+@admin_required
+def edit_embedding_model():
+    """Update embedding model configuration."""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': '未提供数据'}), 400
+    
+    config = update_embedding_config(data)
+    return jsonify({'embedding': config})
+
+
+@models_bp.route('/embedding/status', methods=['GET'])
+@token_required
+def get_embedding_status():
+    """Check if embedding is configured and enabled (for users)."""
+    return jsonify({'configured': is_embedding_configured()})

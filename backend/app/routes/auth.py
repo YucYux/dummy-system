@@ -28,7 +28,8 @@ def login():
     if not user:
         return jsonify({'error': '用户名或密码错误'}), 401
     
-    token = generate_token(user['id'], user['is_admin'])
+    # Generate token with session_token for single device login
+    token = generate_token(user['id'], user['is_admin'], user.get('session_token'))
     
     return jsonify({
         'token': token,
@@ -65,7 +66,8 @@ def register():
     if not user:
         return jsonify({'error': '用户名已存在'}), 409
     
-    token = generate_token(user['id'], user['is_admin'])
+    # Generate token with session_token for single device login
+    token = generate_token(user['id'], user['is_admin'], user.get('session_token'))
     
     return jsonify({
         'token': token,

@@ -3,12 +3,16 @@
 Entry point for running the Flask application.
 """
 
-# Monkey patch MUST be the first thing before any other imports
+import os
+import sys
+
+# Prevent OpenAI SDK default client from failing when gevent monkey-patch touches its lazy proxy.
+# We always use explicit api_key in our code; the default client is never used.
+os.environ.setdefault("OPENAI_API_KEY", "sk-dummy")
+
+# Monkey patch MUST run before other imports that use threading
 from gevent import monkey
 monkey.patch_all()
-
-import sys
-import os
 
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

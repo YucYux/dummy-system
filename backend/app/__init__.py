@@ -30,25 +30,29 @@ def create_app():
     # Ensure data directories exist
     os.makedirs(config.DATA_DIR, exist_ok=True)
     os.makedirs(config.USER_DATA_DIR, exist_ok=True)
+    os.makedirs(config.DOC_LIBRARY_DIR, exist_ok=True)
     
     # Initialize database
     from app.models.user import init_users_db
     init_users_db()
     
     # Initialize models config
-    from app.models.model_config import init_models_config
+    from app.models.model_config import init_models_config, init_embedding_config
     init_models_config()
+    init_embedding_config()
     
     # Register blueprints
     from app.routes.auth import auth_bp
     from app.routes.chat import chat_bp
     from app.routes.admin import admin_bp
     from app.routes.models import models_bp
+    from app.routes.doc_library import doc_library_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(chat_bp, url_prefix='/api/chat')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(models_bp, url_prefix='/api/models')
+    app.register_blueprint(doc_library_bp, url_prefix='/api/doc-library')
     
     # Initialize SocketIO
     socketio.init_app(app)

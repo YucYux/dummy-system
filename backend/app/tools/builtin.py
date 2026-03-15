@@ -6,6 +6,9 @@ Add your custom tools here following the same pattern.
 import datetime
 import math
 from app.tools.registry import ToolRegistry
+from app.services.rag_service import get_rag_service
+from app.models.doc_library import get_embedding_status
+from app.models.model_config import is_embedding_configured
 
 
 def register_builtin_tools(registry: ToolRegistry):
@@ -109,6 +112,29 @@ def register_builtin_tools(registry: ToolRegistry):
         },
         handler=tool_string_utils
     )
+    
+    # Tool 6: RAG - Search document libraries
+    registry.register(
+        name="search_documents",
+        description="Search the user's document libraries for relevant information. Use this when you need to find information from documents that the user has uploaded. The search will look through all document libraries that the user has selected for this conversation.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query describing what information you're looking for"
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of relevant chunks to retrieve (default: 5, max: 20)",
+                    "default": 5
+                }
+            },
+            "required": ["query"]
+        },
+        handler=tool_search_documents,
+        requires_context=True
+    )
 
 
 # Tool implementations
@@ -201,3 +227,58 @@ def tool_string_utils(text: str, operation: str) -> dict:
     result["original"] = text
     result["operation"] = operation
     return result
+
+
+def tool_search_documents(context: dict, query: str, top_k: int = 5) -> dict:
+    """Search user's document libraries for relevant information."""
+    user_id = context.get('user_id')
+    library_ids = context.get('library_ids', [])
+    
+    if not user_id:
+        return {"error": "User context not available"}
+    
+    if not library_ids:
+        return {
+            "error": "No document libraries selected for this conversation",
+            "hint": "Please select document libraries to search in the conversation settings"
+        }
+    
+    if not is_embedding_configured():
+        return {"error": "Embedding model not configured. Please contact administrator."}
+    
+    status = get_embedding_status(user_id)
+    if status.get('is_embedding'):
+        return {"error": "Documents are being processed. Please try again later."}
+    
+    top_k = min(max(1, top_k), 20)
+    
+    try:
+        rag_service = get_rag_service()
+        results = rag_service.search(user_id, library_ids, query, top_k)
+        
+        if not results:
+            return {
+                "query": query,
+                "results": [],
+                "message": "No relevant documents found"
+            }
+        
+        formatted_results = []
+        for i, r in enumerate(results):
+            formatted_results.append({
+                "rank": i + 1,
+                "content": r['content'],
+                "source": r['source'],
+                "relevance_score": round(r['score'], 4)
+            })
+        
+        return {
+            "query": query,
+            "results": formatted_results,
+            "total_results": len(formatted_results)
+        }
+        
+    except RuntimeError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        return {"error": f"Search failed: {str(e)}"}

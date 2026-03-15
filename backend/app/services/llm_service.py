@@ -49,7 +49,8 @@ class LLMService:
             base_url=self.model_config['api_url']
         )
     
-    def chat_stream(self, messages: list, use_tools: bool = True, reasoning_effort: str = None, stop_flag=None):
+    def chat_stream(self, messages: list, use_tools: bool = True, reasoning_effort: str = None, 
+                     stop_flag=None, tool_context: dict = None):
         """
         Stream chat completion with tool support.
         
@@ -67,6 +68,7 @@ class LLMService:
             use_tools: Whether to enable tool calling
             reasoning_effort: Reasoning effort level
             stop_flag: threading.Event() to signal stopping the generation
+            tool_context: Context dict for tools (user_id, library_ids, etc.)
         """
         
         try:
@@ -173,7 +175,7 @@ class LLMService:
                         for tc_id, tc_data in tool_calls.items():
                             try:
                                 args = json.loads(tc_data["arguments"])
-                                result = execute_tool(tc_data["name"], args)
+                                result = execute_tool(tc_data["name"], args, tool_context)
                                 yield {
                                     "type": "tool_call_end",
                                     "id": tc_id,
@@ -199,7 +201,8 @@ class LLMService:
         except Exception as e:
             yield {"type": "error", "message": str(e)}
     
-    def chat_with_tools(self, messages: list, max_iterations: int = 10, reasoning_effort: str = None, stop_flag=None):
+    def chat_with_tools(self, messages: list, max_iterations: int = 10, reasoning_effort: str = None, 
+                         stop_flag=None, tool_context: dict = None):
         """
         Complete chat with automatic tool execution loop.
         
@@ -212,6 +215,7 @@ class LLMService:
             max_iterations: Maximum number of tool call iterations
             reasoning_effort: Reasoning effort level
             stop_flag: threading.Event() to signal stopping the generation
+            tool_context: Context dict for tools (user_id, library_ids, etc.)
         
         Yields events throughout the process.
         """
@@ -230,7 +234,8 @@ class LLMService:
             assistant_reasoning = ""
             
             # Stream response
-            for event in self.chat_stream(current_messages, reasoning_effort=reasoning_effort, stop_flag=stop_flag):
+            for event in self.chat_stream(current_messages, reasoning_effort=reasoning_effort, 
+                                          stop_flag=stop_flag, tool_context=tool_context):
                 yield event
                 
                 if event["type"] == "content":

@@ -13,6 +13,7 @@ from app.models.user import get_user_by_id
 from app.models.conversation import (
     add_message, get_messages_for_llm, get_conversation, update_conversation
 )
+from app.models.doc_library import get_conversation_libraries, get_embedding_status
 from app.services.llm_service import LLMService
 
 
@@ -51,6 +52,17 @@ def stream_generation_task(sid, user_id, conversation_id, use_model_id, reasonin
 
     stop_flag = generation['stop_flag']
 
+    # Check if user is currently embedding (cannot chat during embedding)
+    embedding_status = get_embedding_status(user_id)
+    if embedding_status.get('is_embedding'):
+        emit_to_sid('stream_error', sid, conversation_payload(
+            conversation_id, 
+            error='文档正在处理中，请等待处理完成后再进行对话'
+        ))
+        if active_generations.get(sid) is generation:
+            del active_generations[sid]
+        return
+
     try:
         llm_service = LLMService(use_model_id)
     except ValueError as e:
@@ -65,13 +77,24 @@ def stream_generation_task(sid, user_id, conversation_id, use_model_id, reasonin
     parts_data = []
     generation_stopped = False
 
+    # Get bound libraries for tool context
+    bound_libraries = get_conversation_libraries(user_id, conversation_id)
+    library_ids = [lib['id'] for lib in bound_libraries]
+    
+    tool_context = {
+        'user_id': user_id,
+        'conversation_id': conversation_id,
+        'library_ids': library_ids
+    }
+
     emit_to_sid('stream_start', sid, conversation_payload(conversation_id))
 
     try:
         for event in llm_service.chat_with_tools(
             llm_messages,
             reasoning_effort=reasoning_effort,
-            stop_flag=stop_flag
+            stop_flag=stop_flag,
+            tool_context=tool_context
         ):
             if stop_flag.is_set():
                 generation_stopped = True

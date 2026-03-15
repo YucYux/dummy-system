@@ -36,6 +36,10 @@
       </div>
       
       <div class="sidebar-footer">
+        <button class="doc-library-btn" @click="showDocLibraryModal = true" :disabled="isEmbedding">
+          📚 我的文档库
+          <span v-if="isEmbedding" class="embedding-indicator">处理中</span>
+        </button>
         <div class="user-info">
           <span>{{ authStore.user?.username }}</span>
           <span v-if="authStore.isAdmin" class="admin-badge">管理员</span>
@@ -64,7 +68,7 @@
         <!-- 起始页的模型选择和输入区域 -->
         <div class="welcome-input-section">
           <div 
-            v-if="isModelDropdownOpen || isReasoningDropdownOpen" 
+            v-if="isModelDropdownOpen || isReasoningDropdownOpen || isLibraryDropdownOpen" 
             class="dropdown-overlay" 
             @click="closeAllDropdowns"
           ></div>
@@ -125,6 +129,40 @@
                 </div>
               </transition>
             </div>
+
+            <div v-if="showLibrarySelector" class="custom-dropdown">
+              <button 
+                class="dropdown-trigger library-trigger" 
+                :class="{ active: isLibraryDropdownOpen }"
+                @click="toggleLibraryDropdown"
+              >
+                <span class="dropdown-label">文档库：</span>
+                <span class="library-label">{{ currentLibraryLabel }}</span>
+                <span class="chevron">▼</span>
+              </button>
+              
+              <transition name="dropdown-fade">
+                <div v-show="isLibraryDropdownOpen" class="dropdown-menu library-menu welcome-dropdown">
+                  <div class="dropdown-header">选择文档库（可多选）</div>
+                  <div 
+                    v-for="lib in availableLibraries" 
+                    :key="lib.id"
+                    class="dropdown-item library-item"
+                    :class="{ selected: isLibrarySelected(lib.id) }"
+                    @click.stop="toggleLibrarySelection(lib.id)"
+                  >
+                    <input 
+                      type="checkbox" 
+                      :checked="isLibrarySelected(lib.id)" 
+                      class="library-checkbox"
+                      @click.stop
+                    />
+                    <span class="item-title">{{ lib.name }}</span>
+                    <span class="library-type-badge">{{ lib.type }}</span>
+                  </div>
+                </div>
+              </transition>
+            </div>
           </div>
           
           <form @submit.prevent="hasAnyStreamingConversation ? handleStop() : sendFirstMessage()" class="welcome-input-form">
@@ -162,7 +200,7 @@
           <h3>{{ chatStore.currentConversation?.title || '新对话' }}</h3>
           
           <div 
-            v-if="isModelDropdownOpen || isReasoningDropdownOpen" 
+            v-if="isModelDropdownOpen || isReasoningDropdownOpen || isLibraryDropdownOpen" 
             class="dropdown-overlay" 
             @click="closeAllDropdowns"
           ></div>
@@ -219,6 +257,41 @@
                   >
                     <span class="item-title">{{ option.label }}</span>
                     <span v-if="chatStore.reasoningEffort === option.value" class="check-icon">✓</span>
+                  </div>
+                </div>
+              </transition>
+            </div>
+
+            <div v-if="showLibrarySelector" class="custom-dropdown">
+              <button 
+                class="dropdown-trigger library-trigger" 
+                :class="{ active: isLibraryDropdownOpen, disabled: isStreaming }"
+                @click="!isStreaming && toggleLibraryDropdown()"
+                :disabled="isStreaming"
+              >
+                <span class="dropdown-label">文档库：</span>
+                <span class="library-label">{{ currentLibraryLabel }}</span>
+                <span class="chevron">▼</span>
+              </button>
+              
+              <transition name="dropdown-fade">
+                <div v-show="isLibraryDropdownOpen" class="dropdown-menu library-menu">
+                  <div class="dropdown-header">选择文档库（可多选）</div>
+                  <div 
+                    v-for="lib in availableLibraries" 
+                    :key="lib.id"
+                    class="dropdown-item library-item"
+                    :class="{ selected: isLibrarySelected(lib.id) }"
+                    @click.stop="toggleLibrarySelection(lib.id); updateConversationLibraries()"
+                  >
+                    <input 
+                      type="checkbox" 
+                      :checked="isLibrarySelected(lib.id)" 
+                      class="library-checkbox"
+                      @click.stop
+                    />
+                    <span class="item-title">{{ lib.name }}</span>
+                    <span class="library-type-badge">{{ lib.type }}</span>
                   </div>
                 </div>
               </transition>
@@ -352,6 +425,18 @@
         </div>
       </template>
     </main>
+    
+    <!-- Document Library Modal -->
+    <DocLibraryModal 
+      :visible="showDocLibraryModal" 
+      @close="showDocLibraryModal = false"
+      @libraries-changed="handleLibrariesChanged"
+    />
+    
+    <!-- Embedding Warning Banner -->
+    <div v-if="isEmbedding" class="embedding-banner">
+      <span>📊 文档正在处理中，处理完成前无法发送消息</span>
+    </div>
   </div>
 </template>
 
@@ -368,6 +453,7 @@ import hljs from 'highlight.js'
 import iconCopy from '../../assets/copy.svg'
 import iconRedo from '../../assets/redo.svg'
 import iconReturn from '../../assets/return.svg'
+import DocLibraryModal from '@/components/DocLibraryModal.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -376,6 +462,15 @@ const chatStore = useChatStore()
 const inputMessage = ref('')
 const messagesContainer = ref(null)
 const hoveredMessageId = ref(null)
+
+// Document Library Modal
+const showDocLibraryModal = ref(false)
+const isEmbedding = ref(false)
+
+// Document Library Selection (dropdown style)
+const availableLibraries = ref([])
+const selectedLibraryIds = ref([])
+const isLibraryDropdownOpen = ref(false)
 
 // Custom Dropdown States
 const selectedModelId = ref(null)
@@ -393,6 +488,21 @@ const showReasoningSelector = computed(() => {
   return model?.is_reasoning
 })
 
+const currentLibraryLabel = computed(() => {
+  if (selectedLibraryIds.value.length === 0) {
+    return '未选择'
+  }
+  if (selectedLibraryIds.value.length === 1) {
+    const lib = availableLibraries.value.find(l => l.id === selectedLibraryIds.value[0])
+    return lib ? lib.name : '1 个文档库'
+  }
+  return `${selectedLibraryIds.value.length} 个文档库`
+})
+
+const showLibrarySelector = computed(() => {
+  return availableLibraries.value.length > 0
+})
+
 const currentModelName = computed(() => {
   const model = chatStore.models.find(m => m.id === selectedModelId.value)
   if (model) {
@@ -407,7 +517,11 @@ const currentReasoningLabel = computed(() => {
 })
 
 const canSendFirstMessage = computed(() => {
-  return Boolean(inputMessage.value.trim() && selectedModelId.value && !hasAnyStreamingConversation.value)
+  return Boolean(inputMessage.value.trim() && selectedModelId.value && !hasAnyStreamingConversation.value && !isEmbedding.value)
+})
+
+const canSendMessage = computed(() => {
+  return Boolean(inputMessage.value.trim() && !hasAnyStreamingConversation.value && !isEmbedding.value)
 })
 
 const currentConversationId = computed(() => chatStore.currentConversationId)
@@ -483,16 +597,38 @@ function scrollToBottom() {
 function toggleModelDropdown() {
   isModelDropdownOpen.value = !isModelDropdownOpen.value
   isReasoningDropdownOpen.value = false
+  isLibraryDropdownOpen.value = false
 }
 
 function toggleReasoningDropdown() {
   isReasoningDropdownOpen.value = !isReasoningDropdownOpen.value
   isModelDropdownOpen.value = false
+  isLibraryDropdownOpen.value = false
+}
+
+function toggleLibraryDropdown() {
+  isLibraryDropdownOpen.value = !isLibraryDropdownOpen.value
+  isModelDropdownOpen.value = false
+  isReasoningDropdownOpen.value = false
 }
 
 function closeAllDropdowns() {
   isModelDropdownOpen.value = false
   isReasoningDropdownOpen.value = false
+  isLibraryDropdownOpen.value = false
+}
+
+function toggleLibrarySelection(libraryId) {
+  const idx = selectedLibraryIds.value.indexOf(libraryId)
+  if (idx >= 0) {
+    selectedLibraryIds.value.splice(idx, 1)
+  } else {
+    selectedLibraryIds.value.push(libraryId)
+  }
+}
+
+function isLibrarySelected(libraryId) {
+  return selectedLibraryIds.value.includes(libraryId)
 }
 
 function selectModel(id) {
@@ -532,6 +668,7 @@ function goToHome() {
   }
   chatStore.clearCurrent()
   syncHomeModelSelection()
+  selectedLibraryIds.value = []
 }
 
 // 从起始页发送第一条消息（创建对话并发送）
@@ -541,6 +678,10 @@ async function sendFirstMessage() {
     alert('暂无可用模型，请先在管理面板配置并启用模型')
     return
   }
+  if (isEmbedding.value) {
+    alert('文档正在处理中，请等待处理完成后再发送消息')
+    return
+  }
   
   const message = inputMessage.value.trim()
   inputMessage.value = ''
@@ -548,6 +689,15 @@ async function sendFirstMessage() {
   // 先创建对话
   const conv = await chatStore.createConversationWithModel(selectedModelId.value, chatStore.reasoningEffort)
   socketService.joinConversation(conv.id)
+  
+  // 设置选中的文档库
+  if (selectedLibraryIds.value.length > 0) {
+    try {
+      await api.setConversationLibraries(conv.id, selectedLibraryIds.value)
+    } catch (err) {
+      console.error('Failed to set conversation libraries:', err)
+    }
+  }
   
   // 添加用户消息占位
   const clientId = `pending-${Date.now()}`
@@ -588,6 +738,9 @@ async function selectConversation(conversationId) {
     selectedModelId.value = chatStore.selectedModel.id
   }
   
+  // 加载该对话绑定的文档库
+  await loadConversationLibraries()
+  
   socketService.joinConversation(conversationId)
   scrollToBottom()
 }
@@ -616,7 +769,7 @@ async function deleteConversation(conversationId) {
 }
 
 function sendMessage() {
-  if (!inputMessage.value.trim() || hasAnyStreamingConversation.value) return
+  if (!inputMessage.value.trim() || hasAnyStreamingConversation.value || isEmbedding.value) return
   
   const message = inputMessage.value.trim()
   inputMessage.value = ''
@@ -789,14 +942,68 @@ async function initializeChatView() {
 
   await Promise.all([
     chatStore.loadConversations(),
-    chatStore.loadModels()
+    chatStore.loadModels(),
+    loadAvailableLibraries()
   ])
 
   if (!currentConversationId.value) {
     syncHomeModelSelection()
   } else {
     socketService.joinConversation(currentConversationId.value)
+    loadConversationLibraries()
   }
+  
+  checkEmbeddingStatus()
+}
+
+async function checkEmbeddingStatus() {
+  try {
+    const res = await api.getEmbeddingProgress()
+    isEmbedding.value = res.status.is_embedding
+  } catch (err) {
+    console.error('Failed to check embedding status:', err)
+  }
+}
+
+async function loadAvailableLibraries() {
+  try {
+    const res = await api.getLibraries()
+    // Only show libraries that have been processed (have chunks)
+    availableLibraries.value = res.libraries.filter(l => l.status === 'ready' && l.chunk_count > 0)
+  } catch (err) {
+    console.error('Failed to load libraries:', err)
+  }
+}
+
+async function loadConversationLibraries() {
+  if (!currentConversationId.value) return
+  try {
+    const res = await api.getConversationLibraries(currentConversationId.value)
+    selectedLibraryIds.value = res.libraries.map(l => l.id)
+    
+    if (res.deleted_library_ids && res.deleted_library_ids.length > 0) {
+      showToast('部分文档库已被删除，已自动解除绑定')
+    }
+  } catch (err) {
+    console.error('Failed to load conversation libraries:', err)
+  }
+}
+
+async function updateConversationLibraries() {
+  if (!currentConversationId.value) return
+  try {
+    await api.setConversationLibraries(currentConversationId.value, selectedLibraryIds.value)
+  } catch (err) {
+    console.error('Failed to update conversation libraries:', err)
+  }
+}
+
+async function handleLibrariesChanged() {
+  await loadAvailableLibraries()
+  if (currentConversationId.value) {
+    await loadConversationLibraries()
+  }
+  checkEmbeddingStatus()
 }
 
 function handlePageUnload() {
@@ -981,6 +1188,42 @@ watch(isStreaming, (streaming) => {
   border-top: 1px solid var(--border-color);
 }
 
+.doc-library-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  margin-bottom: 0.75rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover:not(:disabled) {
+    background: var(--bg-secondary);
+    border-color: var(--primary-color);
+  }
+  
+  &:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+}
+
+.embedding-indicator {
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 999px;
+}
+
 .user-info {
   display: flex;
   align-items: center;
@@ -1114,11 +1357,21 @@ watch(isStreaming, (streaming) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
   
   h3 {
     font-size: 1rem;
     font-weight: 600;
+    margin: 0;
   }
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+  min-width: 0;
 }
 
 .header-controls {
@@ -1177,6 +1430,15 @@ watch(isStreaming, (streaming) => {
   &.active .chevron {
     transform: rotate(180deg);
   }
+
+  &.disabled, &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    
+    &:hover {
+      background: var(--bg-secondary, #f8fafc);
+    }
+  }
 }
 
 .dropdown-menu {
@@ -1195,6 +1457,12 @@ watch(isStreaming, (streaming) => {
   
   &.reasoning-menu {
     min-width: 140px;
+  }
+
+  &.library-menu {
+    min-width: 240px;
+    max-height: 300px;
+    overflow-y: auto;
   }
 }
 
@@ -1231,6 +1499,35 @@ watch(isStreaming, (streaming) => {
   .check-icon {
     font-weight: bold;
     font-size: 0.875rem;
+  }
+
+  &.library-item {
+    justify-content: flex-start;
+    gap: 0.5rem;
+    
+    .library-checkbox {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary-color, #4f46e5);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    
+    .item-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .library-type-badge {
+      font-size: 0.625rem;
+      padding: 0.125rem 0.375rem;
+      border-radius: 4px;
+      background: var(--bg-tertiary, #f1f5f9);
+      color: var(--text-muted, #64748b);
+      flex-shrink: 0;
+    }
   }
 }
 
@@ -1732,6 +2029,33 @@ watch(isStreaming, (streaming) => {
   40% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+// Embedding Banner
+.embedding-banner {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
   }
 }
 </style>

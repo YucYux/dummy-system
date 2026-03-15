@@ -32,9 +32,16 @@ def init_users_db():
             password_hash TEXT NOT NULL,
             is_admin INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
-            last_login TEXT
+            last_login TEXT,
+            session_token TEXT
         )
     ''')
+    
+    # Migration: Add session_token column if it doesn't exist
+    try:
+        cursor.execute("SELECT session_token FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE users ADD COLUMN session_token TEXT")
     
     conn.commit()
     
@@ -59,12 +66,13 @@ def create_user(username: str, password: str, is_admin: bool = False) -> dict:
     user_id = str(uuid.uuid4())
     password_hash = hash_password(password)
     created_at = datetime.now().isoformat()
+    session_token = str(uuid.uuid4())
     
     try:
         cursor.execute('''
-            INSERT INTO users (id, username, password_hash, is_admin, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, username, password_hash, 1 if is_admin else 0, created_at))
+            INSERT INTO users (id, username, password_hash, is_admin, created_at, session_token)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, username, password_hash, 1 if is_admin else 0, created_at, session_token))
         conn.commit()
         
         # Create user's personal database
@@ -74,7 +82,8 @@ def create_user(username: str, password: str, is_admin: bool = False) -> dict:
             'id': user_id,
             'username': username,
             'is_admin': is_admin,
-            'created_at': created_at
+            'created_at': created_at,
+            'session_token': session_token
         }
     except sqlite3.IntegrityError:
         return None
@@ -96,23 +105,57 @@ def verify_user(username: str, password: str) -> dict:
     row = cursor.fetchone()
     
     if row:
-        # Update last login time
+        # Generate new session token (invalidates previous sessions)
+        session_token = str(uuid.uuid4())
+        
+        # Update last login time and session token
         cursor.execute('''
-            UPDATE users SET last_login = ? WHERE id = ?
-        ''', (datetime.now().isoformat(), row['id']))
+            UPDATE users SET last_login = ?, session_token = ? WHERE id = ?
+        ''', (datetime.now().isoformat(), session_token, row['id']))
         conn.commit()
         
         user = {
             'id': row['id'],
             'username': row['username'],
             'is_admin': bool(row['is_admin']),
-            'created_at': row['created_at']
+            'created_at': row['created_at'],
+            'session_token': session_token
         }
         conn.close()
         return user
     
     conn.close()
     return None
+
+
+def verify_session_token(user_id: str, session_token: str) -> bool:
+    """Verify if the session token is still valid for the user."""
+    conn = get_users_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT session_token FROM users WHERE id = ?
+    ''', (user_id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row and row['session_token'] == session_token:
+        return True
+    return False
+
+
+def invalidate_session(user_id: str):
+    """Invalidate a user's session (logout)."""
+    conn = get_users_db()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        UPDATE users SET session_token = NULL WHERE id = ?
+    ''', (user_id,))
+    
+    conn.commit()
+    conn.close()
 
 
 def get_user_by_id(user_id: str) -> dict:

@@ -18,9 +18,9 @@ def get_tools_for_llm():
     return tool_registry.get_tools_schema()
 
 
-def execute_tool(tool_name: str, arguments: dict):
-    """Execute a tool by name with given arguments."""
-    return tool_registry.execute(tool_name, arguments)
+def execute_tool(tool_name: str, arguments: dict, context: dict = None):
+    """Execute a tool by name with given arguments and optional context."""
+    return tool_registry.execute(tool_name, arguments, context)
 
 
 def get_tool_names():
